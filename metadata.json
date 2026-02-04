@@ -1,0 +1,7 @@
+{
+  "name": "FindMyDine - Discover & Reserve",
+  "description": "Your ultimate guide to finding and booking the best local dining experiences.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
