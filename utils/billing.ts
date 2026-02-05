@@ -108,3 +108,41 @@ export const calculateBill = (
     activeItems
   };
 };
+
+/**
+ * Calculates the split of reservation fees.
+ * 
+ * Rules:
+ * 1. Active/Completed: Platform 20%, Restaurant 80%.
+ * 2. Cancelled/Declined: Platform 30%, User (Refund %), Restaurant (Remainder).
+ */
+export const calculateReservationRevenue = (amountPaid: number, status: 'completed' | 'cancelled', refundPercentage: number = 0) => {
+    if (amountPaid <= 0) return { platform: 0, restaurant: 0, userRefund: 0 };
+
+    if (status === 'completed') {
+        // Platform 20%, Restaurant 80%
+        return {
+            platform: Number((amountPaid * 0.20).toFixed(2)),
+            restaurant: Number((amountPaid * 0.80).toFixed(2)),
+            userRefund: 0
+        };
+    } else {
+        // Cancelled
+        // Platform keeps 30% of TOTAL
+        const platformShare = Number((amountPaid * 0.30).toFixed(2));
+        
+        // User gets Refund Percentage of TOTAL
+        // Cap refund at 70% effectively because Platform takes 30%
+        const safeRefundPercent = Math.min(refundPercentage, 70); 
+        const userShare = Number((amountPaid * (safeRefundPercent / 100)).toFixed(2));
+        
+        // Restaurant gets whatever is left
+        const restaurantShare = Number(Math.max(0, amountPaid - platformShare - userShare).toFixed(2));
+
+        return {
+            platform: platformShare,
+            restaurant: restaurantShare,
+            userRefund: userShare
+        };
+    }
+};

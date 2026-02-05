@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { X, Building2, User } from 'lucide-react';
 import { Button } from '../UI/Button';
@@ -287,7 +288,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
                         type="text" 
                         name="name" 
                         required 
-                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-gray-50/30" 
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-white" 
                         placeholder="e.g. The Tasty Spoon"
                         value={formData.name}
                         onChange={handleInputChange}
@@ -302,7 +303,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
                       type="text" 
                       name="name" 
                       required 
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-gray-50/30" 
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-white" 
                       placeholder="John Doe"
                       value={formData.name}
                       onChange={handleInputChange}
@@ -319,7 +320,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
                 type="email" 
                 name="email" 
                 required 
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-gray-50/30" 
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-white" 
                 placeholder="you@example.com"
                 value={formData.email}
                 onChange={handleInputChange}
@@ -334,7 +335,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
                   type="tel" 
                   name="mobile" 
                   required 
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-gray-50/30" 
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-white" 
                   placeholder="+1 234 567 8900"
                   value={formData.mobile}
                   onChange={handleInputChange}
@@ -351,7 +352,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
                 type="password" 
                 name="password" 
                 required 
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-gray-50/30" 
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-white" 
                 placeholder="••••••••"
                 value={formData.password}
                 onChange={handleInputChange}
@@ -366,7 +367,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
                   type="password" 
                   name="confirmPassword" 
                   required 
-                  className={`w-full px-4 py-3 rounded-xl border focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-gray-50/30 ${
+                  className={`w-full px-4 py-3 rounded-xl border focus:border-primary-500 focus:ring-4 focus:ring-primary-100 outline-none transition-all bg-white ${
                     formData.confirmPassword && formData.password !== formData.confirmPassword 
                       ? 'border-red-300 focus:ring-red-100' 
                       : 'border-gray-200'

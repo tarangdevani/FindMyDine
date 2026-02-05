@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { UtensilsCrossed, User, Menu, LayoutDashboard, Heart, Calendar, LogOut, AlertCircle, X, BookOpen } from 'lucide-react';
@@ -106,13 +107,15 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, currentUser, onLog
                 </div>
               )}
               
-              {/* Mobile Menu Button */}
-              <button 
-                className="md:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-full"
-                onClick={() => setIsMobileMenuOpen(true)}
-              >
-                <Menu size={24} />
-              </button>
+              {/* Mobile Menu Button - Only visible if logged in */}
+              {currentUser && (
+                <button 
+                  className="md:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-full"
+                  onClick={() => setIsMobileMenuOpen(true)}
+                >
+                  <Menu size={24} />
+                </button>
+              )}
             </div>
           </div>
         </div>

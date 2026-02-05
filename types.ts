@@ -1,5 +1,4 @@
 
-
 export enum UserRole {
   CUSTOMER = 'customer',
   RESTAURANT = 'restaurant'
@@ -12,12 +11,20 @@ export interface BillingConfig {
   salesTaxRate: number;
   isServiceChargeInclusive: boolean;
   isSalesTaxInclusive: boolean;
+  paypalClientId?: string; // New field for PayPal
 }
 
 export interface ReservationConfig {
   reservationFee: number;
   isRefundable: boolean;
-  refundPercentage: number; // 0-100
+  refundPercentage: number; // 0-70 (Platform takes 30% fixed on cancel)
+}
+
+export interface PayoutConfig {
+  accountHolderName: string;
+  bankName: string;
+  accountNumber: string;
+  routingNumber: string;
 }
 
 export interface Reservation {
@@ -47,6 +54,46 @@ export interface Reservation {
   paymentStatus?: 'paid' | 'unpaid' | 'refunded' | 'pending_counter';
   paymentMethod?: 'online' | 'counter';
   totalBillAmount?: number;
+
+  // Financial Breakdown
+  revenueSplit?: {
+    platform: number;
+    restaurant: number;
+    userRefund: number;
+  };
+}
+
+export type TransactionType = 'reservation' | 'bill_payment' | 'cancellation' | 'withdrawal' | 'subscription';
+export type TransactionStatus = 'pending' | 'completed' | 'failed';
+
+export interface Transaction {
+  id?: string;
+  restaurantId: string;
+  type: TransactionType;
+  amount: number; // Net amount to restaurant (Positive = Income, Negative = Outflow)
+  status: TransactionStatus;
+  createdAt: string;
+  description: string;
+  
+  // References
+  reservationId?: string;
+  orderId?: string;
+  
+  // Snapshot Data for History
+  metadata?: {
+    customerName?: string;
+    totalBill?: number;
+    platformFee?: number;
+    itemsSummary?: string; // e.g. "2x Burger, 1x Coke"
+    refundAmount?: number;
+  };
+}
+
+export interface WalletStats {
+  availableBalance: number;
+  pendingBalance: number;
+  totalEarnings: number;
+  lastPayout?: string;
 }
 
 export type OrderStatus = 'ordered' | 'preparing' | 'served' | 'paid' | 'cancelled';
@@ -59,6 +106,15 @@ export interface OrderItem {
   notes?: string;
   status?: OrderStatus;
   selectedAddOns?: FoodAddOn[];
+}
+
+export interface BillSnapshot {
+  subtotal: number;
+  serviceCharge: number;
+  tax: number;
+  discount: number;
+  grandTotal: number;
+  discountDetails?: string; // e.g. "Coupon SAVE20"
 }
 
 export interface Order {
@@ -80,6 +136,8 @@ export interface Order {
     reason?: string;
   };
   appliedOfferId?: string;
+  appliedDiscountAmount?: number; // Track specific amount deducted by offer
+  billDetails?: BillSnapshot; // Store the exact calculation at time of generation
 }
 
 export interface Offer {
@@ -91,17 +149,43 @@ export interface Offer {
   rewardType: 'discount' | 'free_item';
   discountType: 'percentage' | 'fixed';
   discountValue: number;
-  maxDiscount?: number;
+  maxDiscount?: number; // Per order cap
   freeItemId?: string;
   triggerItemId?: string;
   minSpend: number;
   applicableItemIds?: string[];
-  maxUsage?: number;
+  
+  // Usage Limits
+  maxUsage?: number; // Total count of redemptions allowed
+  globalBudget?: number; // Total monetary value allowed to be given away
+  
+  // Stats
+  usageCount: number;
+  totalDiscountGiven?: number; // Cumulative discount given across all orders
+
   validFrom: string;
   validUntil: string;
   isActive: boolean;
-  usageCount: number;
   termsAndConditions?: string;
+  createdAt: string;
+}
+
+export interface OfferUsage {
+  id?: string;
+  userId: string;
+  userName: string;
+  orderId: string;
+  discountAmount: number;
+  usedAt: string;
+}
+
+export interface Review {
+  id?: string;
+  restaurantId: string;
+  userId: string;
+  userName: string;
+  rating: number; // 1-5
+  comment: string;
   createdAt: string;
 }
 
@@ -140,11 +224,14 @@ export interface RestaurantProfile extends UserProfile {
   coverImageUrl?: string;
   description?: string;
   rating?: number;
+  ratingCount?: number;
   cuisine?: string[];
   operatingHours?: OperatingHours;
   priceRange?: '$$' | '$$$' | '$$$$';
   reservationConfig?: ReservationConfig;
   billingConfig?: BillingConfig;
+  payoutConfig?: PayoutConfig; // New Payout Settings
+  bankInfoConfigured?: boolean; // Track if payout info is set
 }
 
 export interface RestaurantData {

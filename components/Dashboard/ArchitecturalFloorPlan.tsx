@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Hand, MousePointer2, PenTool, ZoomIn, ZoomOut, Save, Maximize, Settings, Trash2, Circle, Square, Armchair, LogOut
@@ -595,7 +596,7 @@ export const ArchitecturalFloorPlan: React.FC<ArchitecturalFloorPlanProps> = ({ 
                            if(readOnly && onTableSelect) { onTableSelect(table); } 
                            else if (!readOnly) { setSelectedId(table.id!); setSelectedType('table'); setInitialObjPos(pos); }
                         }}
-                        className={`cursor-pointer ${readOnly ? 'hover:scale-105 transition-transform' : ''}`}
+                        className="cursor-pointer" // Removed hover scale
                       >
                          {/* Chairs - Rendered BEFORE table so they appear "under" */}
                          {visualChairs.map((c, i) => (

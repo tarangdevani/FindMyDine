@@ -1,6 +1,7 @@
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
+
+import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, orderBy, increment } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { Offer } from "../types";
+import { Offer, OfferUsage } from "../types";
 
 // Helper to reference subcollections under a specific user (restaurant)
 const getUserSubcollection = (uid: string, subcollection: string) => {
@@ -23,6 +24,7 @@ export const addOffer = async (uid: string, offer: Omit<Offer, 'id' | 'createdAt
     const newOffer: Omit<Offer, 'id'> = {
       ...offer,
       usageCount: 0,
+      totalDiscountGiven: 0,
       createdAt: new Date().toISOString()
     };
     
@@ -52,5 +54,46 @@ export const deleteOffer = async (uid: string, offerId: string): Promise<boolean
   } catch (error) {
     console.error("Error deleting offer:", error);
     return false;
+  }
+};
+
+// --- Usage Tracking ---
+
+export const trackOfferUsage = async (
+  restaurantId: string, 
+  offerId: string, 
+  usageData: { userId: string; userName: string; orderId: string; discountAmount: number }
+): Promise<boolean> => {
+  try {
+    // 1. Add record to usage subcollection
+    const usageRef = collection(db, "users", restaurantId, "offers", offerId, "usage");
+    await addDoc(usageRef, {
+      ...usageData,
+      usedAt: new Date().toISOString()
+    });
+
+    // 2. Update stats on the offer document
+    const offerRef = doc(db, "users", restaurantId, "offers", offerId);
+    await updateDoc(offerRef, {
+      usageCount: increment(1),
+      totalDiscountGiven: increment(usageData.discountAmount)
+    });
+
+    return true;
+  } catch (error) {
+    console.error("Error tracking usage:", error);
+    return false;
+  }
+};
+
+export const getOfferUsageHistory = async (restaurantId: string, offerId: string): Promise<OfferUsage[]> => {
+  try {
+    const usageRef = collection(db, "users", restaurantId, "offers", offerId, "usage");
+    const q = query(usageRef, orderBy("usedAt", "desc"));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferUsage));
+  } catch (error) {
+    console.error("Error fetching usage history:", error);
+    return [];
   }
 };

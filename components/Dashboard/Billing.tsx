@@ -1,14 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, LayoutDashboard, Receipt } from 'lucide-react';
-import { Order, Reservation, TableItem, MenuItem, FoodCategory, Offer } from '../../types';
-import { getOrdersByRestaurant, updateOrder, createOrder } from '../../services/orderService';
+import { Order, Reservation, TableItem, MenuItem, FoodCategory, Offer, OrderItem } from '../../types';
+import { getOrdersByRestaurant, updateOrder, createOrder, markOrderAsPaid } from '../../services/orderService';
 import { getReservationsByRestaurant, completeReservation, createReservation } from '../../services/reservationService';
 import { getTables } from '../../services/tableService';
 import { getMenu, getCategories } from '../../services/menuService';
-import { getOffers } from '../../services/offerService';
+import { getOffers, trackOfferUsage } from '../../services/offerService';
 import { getRestaurantProfile } from '../../services/restaurantService';
 import { Button } from '../UI/Button';
+import { useToast } from '../../context/ToastContext';
+import { recordTransaction } from '../../services/walletService'; // Import wallet service
 
 // Sub Components
 import { BillingList } from './Billing/BillingList';
@@ -21,6 +23,7 @@ interface BillingProps {
 }
 
 export const Billing: React.FC<BillingProps> = ({ userId }) => {
+  const { showToast } = useToast();
   // Mode State
   const [activeView, setActiveView] = useState<'dashboard' | 'pos'>('dashboard');
   const [activeListTab, setActiveListTab] = useState<'requests' | 'history'>('requests');
@@ -76,22 +79,38 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
     try {
         const res = reservations.find(r => r.id === selectedOrder.reservationId);
         // We use the helper to close reservation and mark paid
-        // Total amount is usually re-calc'd in backend or passed here. 
-        // We trust the Order Total or re-calc it if needed.
         await completeReservation(
             selectedOrder.reservationId, 
             userId, 
             selectedOrder.tableId,
             { totalBillAmount: selectedOrder.totalAmount }
         );
-        await updateOrder(selectedOrder.id!, { status: 'paid' });
+        
+        // Update status of order and ALL its items to 'paid'
+        await markOrderAsPaid(selectedOrder.id!);
+        
+        // WALLET: Record counter payment (Optional: If we want to track cash flow in wallet, 
+        // usually wallets track *digital* balance. Assuming cash is handled physically, we might NOT record it in "Wallet Balance"
+        // but for "Total Sales" stats. For now, let's keep Wallet strictly for Online/Digital Platform money.)
+        
+        // Track Offer Usage if applied
+        if (selectedOrder.appliedOfferId && selectedOrder.billDetails) {
+            await trackOfferUsage(userId, selectedOrder.appliedOfferId, {
+                userId: selectedOrder.userId,
+                userName: selectedOrder.userName,
+                orderId: selectedOrder.id!,
+                discountAmount: selectedOrder.billDetails.discount
+            });
+        }
         
         // Refresh and switch tab
         await fetchData();
         setActiveListTab('history');
         setSelectedOrder(null);
+        showToast("Payment confirmed and session closed", "success");
     } catch (error) {
         console.error(error);
+        showToast("Failed to confirm payment", "error");
     } finally {
         setIsProcessing(false);
     }
@@ -122,7 +141,13 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
         };
         const resId = await createReservation(resData);
 
-        // 2. Create the Order
+        // 2. Create the Order with Billing Snapshot
+        // Ensure all items are marked as PAID since this is an instant POS transaction
+        const itemsWithPaidStatus = posData.items.map((i: OrderItem) => ({ 
+            ...i, 
+            status: 'paid' 
+        }));
+
         const orderData: Order = {
             restaurantId: userId,
             tableId: posData.tableId,
@@ -130,33 +155,50 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
             reservationId: resId!,
             userId: 'walk-in-pos',
             userName: posData.customerName,
-            items: posData.items,
+            items: itemsWithPaidStatus,
             totalAmount: posData.totalAmount,
             status: 'paid',
             createdAt: new Date().toISOString(),
-            customDiscount: posData.customDiscount
+            customDiscount: posData.customDiscount,
+            appliedOfferId: posData.appliedOfferId,
+            billDetails: posData.billDetails // Important: Store the snapshot!
         };
-        await createOrder(orderData);
+        const orderId = await createOrder(orderData);
 
-        alert("Bill Generated & Saved to History");
+        // Track Offer Usage if applied
+        if (posData.appliedOfferId && posData.billDetails) {
+            await trackOfferUsage(userId, posData.appliedOfferId, {
+                userId: 'walk-in-pos',
+                userName: posData.customerName,
+                orderId: orderId!,
+                discountAmount: posData.billDetails.discount
+            });
+        }
+
+        showToast("Bill Generated & Saved to History", "success");
         await fetchData();
         setActiveView('dashboard');
         setActiveListTab('history');
+        
+        // Auto-select the newly created order for printing
+        const newOrder = { ...orderData, id: orderId };
+        setSelectedOrder(newOrder);
+
     } catch (error) {
         console.error(error);
-        alert("Failed to generate bill");
+        showToast("Failed to generate bill", "error");
     } finally {
         setIsProcessing(false);
     }
   };
 
   return (
-    <div className="h-[calc(100vh-140px)] flex flex-col animate-fade-in-up">
+    <div className="min-h-[calc(100vh-140px)] flex flex-col animate-fade-in-up pb-6">
         {/* Header Controls */}
         <div className="flex justify-between items-center mb-6 shrink-0">
             <div>
                <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                  <Receipt size={24}/> Billing & POS
+                  <Receipt size={24} className="text-primary-600"/> Billing & POS
                </h2>
                <p className="text-gray-500">Manage counter requests and generate invoices.</p>
             </div>
@@ -166,15 +208,15 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
                       <LayoutDashboard size={18} className="mr-2"/> Back to Dashboard
                    </Button>
                ) : (
-                   <Button onClick={() => setActiveView('pos')}>
-                      <Plus size={18} className="mr-2"/> Generate New Bill
+                   <Button onClick={() => setActiveView('pos')} className="shadow-xl shadow-primary-500/20">
+                      <Plus size={18} className="mr-2"/> New Order (POS)
                    </Button>
                )}
             </div>
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1">
             {activeView === 'pos' ? (
                 <POSView 
                     menuItems={menuItems}
@@ -183,11 +225,12 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
                     offers={offers}
                     onGenerateBill={handleCreateNewBill}
                     isProcessing={isProcessing}
+                    billingConfig={billingConfig}
                 />
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 h-full">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 h-[calc(100vh-240px)] min-h-[600px]">
                     {/* List Column */}
-                    <div className="md:col-span-5 h-full">
+                    <div className="md:col-span-4 h-full overflow-hidden">
                         <BillingList 
                             orders={orders}
                             reservations={reservations}
@@ -198,7 +241,7 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
                         />
                     </div>
                     {/* Preview Column */}
-                    <div className="md:col-span-7 h-full">
+                    <div className="md:col-span-8 h-full overflow-hidden">
                         {selectedOrder ? (
                             <BillPreview 
                                 order={selectedOrder}
@@ -208,9 +251,9 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
                                 isProcessing={isProcessing}
                             />
                         ) : (
-                            <div className="h-full bg-gray-50 rounded-2xl border border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400">
+                            <div className="h-full bg-white rounded-2xl border border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 shadow-sm">
                                 <Receipt size={48} className="mb-4 opacity-20" />
-                                <p>Select an order to view details</p>
+                                <p>Select an order to view invoice details</p>
                             </div>
                         )}
                     </div>

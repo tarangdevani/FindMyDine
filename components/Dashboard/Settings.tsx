@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
-import { FoodCategory, FoodAddOn, BillingConfig } from '../../types';
+import { FoodCategory, FoodAddOn, BillingConfig, PayoutConfig } from '../../types';
 import { getCategories, getGlobalAddOns } from '../../services/menuService';
 import { getRestaurantProfile } from '../../services/restaurantService';
 import { CategorySettings } from './Settings/CategorySettings';
 import { AddOnSettings } from './Settings/AddOnSettings';
 import { BillingSettings } from './Settings/BillingSettings';
+import { PayoutSettings } from './Settings/PayoutSettings';
 
 interface SettingsProps {
   userId: string;
@@ -15,6 +16,7 @@ export const Settings: React.FC<SettingsProps> = ({ userId }) => {
   const [categories, setCategories] = useState<FoodCategory[]>([]);
   const [addOns, setAddOns] = useState<FoodAddOn[]>([]);
   const [billingConfig, setBillingConfig] = useState<BillingConfig | undefined>(undefined);
+  const [payoutConfig, setPayoutConfig] = useState<PayoutConfig | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -32,6 +34,9 @@ export const Settings: React.FC<SettingsProps> = ({ userId }) => {
     setAddOns(adds);
     if (profile?.billingConfig) {
         setBillingConfig(profile.billingConfig);
+    }
+    if (profile?.payoutConfig) {
+        setPayoutConfig(profile.payoutConfig);
     }
     setIsLoading(false);
   };
@@ -62,6 +67,11 @@ export const Settings: React.FC<SettingsProps> = ({ userId }) => {
       <BillingSettings 
         userId={userId} 
         initialConfig={billingConfig}
+      />
+
+      <PayoutSettings 
+        userId={userId} 
+        initialConfig={payoutConfig}
       />
     </div>
   );

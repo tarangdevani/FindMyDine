@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Header } from './components/Layout/Header';
@@ -97,10 +98,7 @@ const App: React.FC = () => {
 
   const handleLoginSuccess = (user: UserProfile) => {
     setCurrentUser(user);
-    // Redirect Logic
-    if (user.role === UserRole.RESTAURANT) {
-      navigate('/dashboard');
-    }
+    // User stays on the same page
   };
 
   const handleLogout = async () => {
@@ -241,57 +239,6 @@ const App: React.FC = () => {
         onLoginSuccess={handleLoginSuccess}
       />
       
-      {!isDashboard && !isClaimPage && (
-        <footer className="bg-white border-t border-gray-100 py-16">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
-              <div className="col-span-1 md:col-span-1">
-                <span className="text-xl font-bold text-gray-900 tracking-tight block mb-4">FindMyDine</span>
-                <p className="text-gray-500 text-sm leading-relaxed mb-6">
-                  Making dining experiences memorable, one reservation at a time.
-                </p>
-              </div>
-              
-              <div>
-                <h4 className="font-bold text-gray-900 mb-4">Discover</h4>
-                <ul className="space-y-3 text-sm text-gray-500">
-                  <li><a href="#" className="hover:text-primary-600 transition-colors">Dining Rewards</a></li>
-                  <li><a href="#" className="hover:text-primary-600 transition-colors">Private Events</a></li>
-                  <li><a href="#" className="hover:text-primary-600 transition-colors">Reserve for Others</a></li>
-                  <li><a href="#" className="hover:text-primary-600 transition-colors">Cuisines Near Me</a></li>
-                </ul>
-              </div>
-
-              <div>
-                <h4 className="font-bold text-gray-900 mb-4">Business</h4>
-                <ul className="space-y-3 text-sm text-gray-500">
-                  <li><a href="#" className="hover:text-primary-600 transition-colors">For Restaurateurs</a></li>
-                  <li><a href="#" className="hover:text-primary-600 transition-colors">Business Blog</a></li>
-                  <li><a href="#" className="hover:text-primary-600 transition-colors">Success Stories</a></li>
-                  <li><a href="#" className="hover:text-primary-600 transition-colors">Join Marketplace</a></li>
-                </ul>
-              </div>
-
-              <div>
-                 <h4 className="font-bold text-gray-900 mb-4">Legal</h4>
-                 <ul className="space-y-3 text-sm text-gray-500">
-                  <li><a href="#" className="hover:text-primary-600 transition-colors">Privacy Policy</a></li>
-                  <li><a href="#" className="hover:text-primary-600 transition-colors">Terms of Service</a></li>
-                  <li><a href="#" className="hover:text-primary-600 transition-colors">Cookie Policy</a></li>
-                 </ul>
-              </div>
-            </div>
-            
-            <div className="mt-16 pt-8 border-t border-gray-100 text-center text-sm text-gray-400 flex flex-col md:flex-row justify-between items-center">
-               <p>&copy; 2024 FindMyDine Inc. All rights reserved.</p>
-               <div className="flex gap-6 mt-4 md:mt-0">
-                  <span>English (US)</span>
-                  <span>$ USD</span>
-               </div>
-            </div>
-          </div>
-        </footer>
-      )}
     </div>
   );
 };

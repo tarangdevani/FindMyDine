@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, MapPin, SlidersHorizontal, Loader2, Crosshair, ChevronDown, Check, Star, Navigation } from 'lucide-react';
 import { RestaurantCard } from './RestaurantCard';
@@ -299,9 +300,12 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
 
   return (
     <>
-      <header className="relative bg-white pt-24 pb-8 md:pt-32 md:pb-16 overflow-visible z-30">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary-50 rounded-full blur-3xl -z-10 opacity-60 translate-x-1/3 -translate-y-1/3 pointer-events-none"></div>
-        <div className="absolute top-20 left-0 w-48 h-48 bg-blue-50 rounded-full blur-2xl -z-10 opacity-50 -translate-x-1/2 pointer-events-none"></div>
+      <header className="relative bg-white pt-24 pb-8 md:pt-32 md:pb-16 z-30">
+        {/* Background Blobs Container - Overflow hidden to prevent horizontal scroll */}
+        <div className="absolute inset-0 overflow-hidden -z-10 pointer-events-none">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-primary-50 rounded-full blur-3xl opacity-60 translate-x-1/3 -translate-y-1/3"></div>
+            <div className="absolute top-20 left-0 w-48 h-48 bg-blue-50 rounded-full blur-2xl opacity-50 -translate-x-1/2"></div>
+        </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           

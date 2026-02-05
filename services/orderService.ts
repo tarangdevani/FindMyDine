@@ -1,4 +1,5 @@
-import { collection, addDoc, query, where, getDocs, orderBy, doc, updateDoc, getDoc } from "firebase/firestore";
+
+import { collection, addDoc, query, where, getDocs, orderBy, doc, updateDoc, getDoc, runTransaction } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { Order, OrderItem, OrderStatus } from "../types";
 
@@ -68,33 +69,59 @@ export const updateOrder = async (orderId: string, data: Partial<Order>): Promis
 export const updateOrderItemStatus = async (orderId: string, itemIndex: number, newStatus: OrderStatus): Promise<boolean> => {
   try {
     const orderRef = doc(db, COLLECTION_NAME, orderId);
-    const orderSnap = await getDoc(orderRef);
-
-    if (!orderSnap.exists()) return false;
-
-    const orderData = orderSnap.data() as Order;
-    const updatedItems = [...orderData.items];
-
-    if (!updatedItems[itemIndex]) return false;
-
-    updatedItems[itemIndex] = { ...updatedItems[itemIndex], status: newStatus };
-
-    // Optional: Logic to auto-update parent status could go here, 
-    // e.g., if all items are 'served', mark order as 'served'.
-    // For now, we update the items list and ensure the parent status reflects activity if needed.
-    // Let's keep the parent status loosely coupled or update it if it was 'ordered' and an item moves to 'preparing'.
     
-    const updatePayload: any = { items: updatedItems };
-    
-    // Simple state progression for parent order
-    if (newStatus === 'preparing' && orderData.status === 'ordered') {
-        updatePayload.status = 'preparing';
-    }
+    await runTransaction(db, async (transaction) => {
+        const orderSnap = await transaction.get(orderRef);
+        if (!orderSnap.exists()) throw "Order does not exist!";
 
-    await updateDoc(orderRef, updatePayload);
+        const orderData = orderSnap.data() as Order;
+        const updatedItems = [...orderData.items];
+
+        if (!updatedItems[itemIndex]) throw "Item index out of bounds";
+
+        updatedItems[itemIndex] = { ...updatedItems[itemIndex], status: newStatus };
+
+        const updatePayload: any = { items: updatedItems };
+        
+        // Simple state progression for parent order
+        if (newStatus === 'preparing' && orderData.status === 'ordered') {
+            updatePayload.status = 'preparing';
+        }
+
+        transaction.update(orderRef, updatePayload);
+    });
+
     return true;
   } catch (error) {
     console.error("Error updating item status:", error);
+    return false;
+  }
+};
+
+// New function to bulk update all items in an order to 'paid'
+export const markOrderAsPaid = async (orderId: string): Promise<boolean> => {
+  try {
+    const orderRef = doc(db, COLLECTION_NAME, orderId);
+    await runTransaction(db, async (transaction) => {
+        const orderSnap = await transaction.get(orderRef);
+        if (!orderSnap.exists()) throw "Order does not exist!";
+
+        const orderData = orderSnap.data() as Order;
+        
+        // Update all items to 'paid' status
+        const updatedItems = orderData.items.map(item => ({
+          ...item,
+          status: 'paid' as OrderStatus
+        }));
+
+        transaction.update(orderRef, {
+          status: 'paid',
+          items: updatedItems
+        });
+    });
+    return true;
+  } catch (error) {
+    console.error("Error marking order as paid:", error);
     return false;
   }
 };

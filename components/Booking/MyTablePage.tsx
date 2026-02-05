@@ -5,13 +5,16 @@ import { Loader2, ArrowLeft, CheckCircle, Receipt, Utensils } from 'lucide-react
 import { getRestaurantById } from '../../services/restaurantService';
 import { getTables } from '../../services/tableService';
 import { getMenu, getCategories } from '../../services/menuService';
-import { getOffers } from '../../services/offerService'; 
+import { getOffers, trackOfferUsage } from '../../services/offerService'; 
 import { createReservation, requestCounterPayment, completeReservation } from '../../services/reservationService';
-import { createOrder, getOrdersByReservation, updateOrderItemStatus, updateOrder } from '../../services/orderService';
+import { createOrder, getOrdersByReservation, updateOrderItemStatus, updateOrder, markOrderAsPaid } from '../../services/orderService';
+import { addReview } from '../../services/reviewService';
 import { UserProfile, RestaurantData, TableItem, Reservation, MenuItem, FoodCategory, OrderItem, Order, OrderStatus, Offer, FoodAddOn, BillingConfig } from '../../types';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { calculateBill, DEFAULT_BILLING_CONFIG } from '../../utils/billing';
+import { useToast } from '../../context/ToastContext';
+import { recordTransaction } from '../../services/walletService'; // Import wallet service
 
 // Components
 import { ClaimView } from '../MyTable/ClaimView';
@@ -22,6 +25,7 @@ import { BillView } from '../MyTable/BillView';
 import { AddOnModal } from '../MyTable/AddOnModal';
 import { OffersSheet } from '../MyTable/OffersSheet';
 import { CartBottomSheet } from '../MyTable/CartBottomSheet';
+import { ReviewModal } from '../Reviews/ReviewModal';
 
 interface MyTablePageProps {
   currentUser: UserProfile | null;
@@ -32,6 +36,7 @@ type ViewMode = 'summary' | 'menu' | 'bill';
 type PaymentMethod = 'online' | 'counter';
 
 export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRequired }) => {
+  const { showToast } = useToast();
   const { restaurantId, tableId } = useParams<{ restaurantId: string; tableId: string }>();
   const navigate = useNavigate();
   
@@ -61,6 +66,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   const [selectedMenuItemForAddOn, setSelectedMenuItemForAddOn] = useState<MenuItem | null>(null);
   const [tempSelectedAddOns, setTempSelectedAddOns] = useState<FoodAddOn[]>([]);
   const [isOffersSheetOpen, setIsOffersSheetOpen] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   // Billing - Default to Online
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('online');
@@ -102,6 +108,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
         }
       } catch (error) {
         console.error("Error loading table data:", error);
+        showToast("Error loading table details", "error");
       } finally {
         setIsLoading(false);
       }
@@ -122,10 +129,9 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
     const unsubscribe = onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {
             const res = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Reservation;
-            if (res.status === 'completed') {
-                alert("Payment Confirmed! Thank you for dining with us.");
-                navigate('/');
-                return;
+            // Detect transition to completed to show review modal if needed
+            if (res.status === 'completed' && currentReservation?.status !== 'completed') {
+                setIsReviewModalOpen(true);
             }
             setCurrentReservation(res);
         } else {
@@ -133,7 +139,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
         }
     });
     return () => unsubscribe();
-  }, [currentUser, tableId, restaurantId, navigate]);
+  }, [currentUser, tableId, restaurantId]);
 
   // --- 3. Fetch Orders ---
   useEffect(() => {
@@ -184,6 +190,10 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   }, [activeView, existingOrders, offers, appliedCoupon]);
 
   const calculatePotentialSavings = (offer: Offer, subtotal: number = 0, items: OrderItem[] = []): number => {
+      // Check limits
+      if (offer.globalBudget && (offer.totalDiscountGiven || 0) >= offer.globalBudget) return 0;
+      if (offer.maxUsage && offer.usageCount >= offer.maxUsage) return 0;
+
       if (offer.minSpend && subtotal < offer.minSpend) return 0;
       
       // Filter items if applicable IDs exist
@@ -235,7 +245,13 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
             type: 'walk_in',
             createdAt: new Date().toISOString()
         });
-    } catch (error) { console.error(error); } finally { setIsProcessing(false); }
+        showToast("Table request sent!", "success");
+    } catch (error) { 
+        console.error(error); 
+        showToast("Failed to request table.", "error");
+    } finally { 
+        setIsProcessing(false); 
+    }
   };
 
   const handleItemClick = (item: MenuItem) => {
@@ -245,6 +261,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
           setIsAddOnModalOpen(true);
       } else {
           addToLocalCart(item, []);
+          showToast(`${item.name} added to tray`, "success");
       }
   };
 
@@ -296,10 +313,10 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
           
           setLocalCart([]); 
           setActiveView('summary'); 
-          alert("Order Placed Successfully!");
+          showToast("Order Placed Successfully!", "success");
       } catch (error) { 
           console.error(error); 
-          alert("Failed to place order.");
+          showToast("Failed to place order.", "error");
       } finally { 
           setIsProcessing(false); 
       }
@@ -323,15 +340,18 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
 
       setAppliedCoupon(coupon);
       setCouponCodeInput('');
+      showToast("Coupon applied!", "success");
   };
 
   const handleCounterPayment = async (grandTotal: number) => {
       if (!currentReservation) return;
       setIsProcessing(true);
       try {
+          // Store applied offer in a temporary way or update order here if we want to lock it in
+          // For simplicity, we just mark payment pending. The restaurant confirms and logs it.
           await requestCounterPayment(currentReservation.id!, grandTotal);
-          alert("Check requested. Please proceed to counter.");
-      } catch (e) { console.error(e); } finally { setIsProcessing(false); }
+          showToast("Check requested. Please proceed to counter.", "success");
+      } catch (e) { console.error(e); showToast("Request failed", "error"); } finally { setIsProcessing(false); }
   };
 
   const handleOnlinePaymentSuccess = async (paymentDetails: any, grandTotal: number) => {
@@ -348,7 +368,73 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
                   transactionId: paymentDetails.id 
               }
           );
-      } catch (e) { console.error(e); } finally { setIsProcessing(false); }
+
+          // Mark all active orders in this session as paid and update their item statuses
+          const paymentUpdates = existingOrders.map(order => markOrderAsPaid(order.id!));
+          await Promise.all(paymentUpdates);
+
+          // WALLET: Record bill payment transaction
+          // Online payments are immediately available (status: completed)
+          // We assume 'grandTotal' is the amount the restaurant receives (ignoring platform fee logic for simplicity in this step, 
+          // though ideally we subtract platform fee here).
+          // Let's assume net amount = grandTotal.
+          
+          await recordTransaction({
+              restaurantId: restaurantId!,
+              type: 'bill_payment',
+              amount: grandTotal, 
+              status: 'completed',
+              createdAt: new Date().toISOString(),
+              description: `Online Bill - Table ${table?.name}`,
+              reservationId: currentReservation.id,
+              metadata: {
+                  customerName: currentUser?.displayName || 'Guest',
+                  totalBill: grandTotal,
+                  itemsSummary: existingOrders.flatMap(o => o.items).length + ' items'
+              }
+          });
+
+          // Track Offer Usage if applied
+          if (appliedCoupon || bestPublicOffer) {
+              const usedOffer = appliedCoupon || bestPublicOffer;
+              const discount = appliedCoupon ? couponDiscountAmount : offerDiscountAmount;
+              if (usedOffer && discount > 0) {
+                  // We need an order ID to associate. Often multiple orders per session.
+                  // We'll use the most recent active order ID or a generated transaction ID.
+                  const refOrderId = existingOrders.length > 0 ? existingOrders[0].id! : 'session-' + currentReservation.id;
+                  
+                  await trackOfferUsage(restaurantId!, usedOffer.id!, {
+                      userId: currentUser?.uid || 'guest',
+                      userName: currentUser?.displayName || 'Guest',
+                      orderId: refOrderId,
+                      discountAmount: discount
+                  });
+              }
+          }
+
+          setIsReviewModalOpen(true);
+      } catch (e) { console.error(e); showToast("Payment recording failed", "error"); } finally { setIsProcessing(false); }
+  };
+
+  const handleReviewSubmit = async (rating: number, comment: string) => {
+    if (!currentUser || !restaurant) return;
+    const success = await addReview({
+        restaurantId: restaurant.id,
+        userId: currentUser.uid,
+        userName: currentUser.displayName || 'Guest',
+        rating,
+        comment,
+        createdAt: new Date().toISOString()
+    });
+    
+    if (success) {
+        showToast("Review submitted! Thank you.", "success");
+    } else {
+        showToast("Failed to submit review.", "error");
+    }
+    
+    setIsReviewModalOpen(false);
+    navigate('/');
   };
 
   // --- Render ---
@@ -360,10 +446,16 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
       return <WaitingView table={table} />;
   }
 
-  // View: Active
+  // View: Active OR Completed (Show bill view/modal until they leave)
   if (currentReservation && (currentReservation.status === 'active' || currentReservation.status === 'completed')) {
       const displayItems = existingOrders.flatMap(order => 
-          order.items.map((item, index) => ({ ...item, orderId: order.id!, itemIndex: index, orderTime: order.createdAt }))
+          order.items.map((item, index) => ({ 
+            ...item, 
+            orderId: order.id!, 
+            itemIndex: index, 
+            orderTime: order.createdAt,
+            status: item.status || 'ordered'
+          }))
       ).sort((a, b) => new Date(b.orderTime).getTime() - new Date(a.orderTime).getTime());
 
       // Prepare bill items for View
@@ -454,6 +546,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
                     setIsAddOnModalOpen(false);
                     setSelectedMenuItemForAddOn(null);
                     setTempSelectedAddOns([]);
+                    showToast("Custom item added to tray", "success");
                 }}
                 onClose={() => setIsAddOnModalOpen(false)}
             />
@@ -465,6 +558,13 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
                 onSelectOffer={(offer) => { setBestPublicOffer(offer); setIsOffersSheetOpen(false); }}
                 onClose={() => setIsOffersSheetOpen(false)}
                 calculateSavings={(offer) => calculatePotentialSavings(offer, calculateBill(existingOrders.flatMap(o => o.items)).menuSubtotal, existingOrders.flatMap(o => o.items))}
+            />
+
+            <ReviewModal 
+                isOpen={isReviewModalOpen}
+                onClose={() => { setIsReviewModalOpen(false); navigate('/'); }} // Close and go home
+                onSubmit={handleReviewSubmit}
+                restaurantName={restaurant.name}
             />
         </div>
       );
