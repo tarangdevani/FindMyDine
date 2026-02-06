@@ -47,6 +47,9 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   const [existingOrders, setExistingOrders] = useState<Order[]>([]);
   const [billingConfig, setBillingConfig] = useState<BillingConfig>(DEFAULT_BILLING_CONFIG);
   
+  // Occupancy State
+  const [isOccupiedByOthers, setIsOccupiedByOthers] = useState(false);
+
   // Menu & Offers
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<FoodCategory[]>([]);
@@ -116,26 +119,42 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
     fetchData();
   }, [restaurantId, tableId]);
 
-  // --- 2. Listen for Reservation ---
+  // --- 2. Listen for Reservation & Occupancy Validation ---
   useEffect(() => {
     if (!currentUser || !tableId || !restaurantId) return;
+    
+    // Query for any active reservation on this table
     const q = query(
         collection(db, "reservations"),
-        where("userId", "==", currentUser.uid),
         where("restaurantId", "==", restaurantId),
         where("tableId", "==", tableId),
-        where("status", "in", ["pending", "active", "completed"])
+        where("status", "in", ["pending", "active"])
     );
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
-        if (!snapshot.empty) {
-            const res = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Reservation;
-            // Detect transition to completed to show review modal if needed
-            if (res.status === 'completed' && currentReservation?.status !== 'completed') {
-                setIsReviewModalOpen(true);
+        let myRes: Reservation | null = null;
+        let otherRes: Reservation | null = null;
+
+        snapshot.docs.forEach(doc => {
+            const res = { id: doc.id, ...doc.data() } as Reservation;
+            if (res.userId === currentUser.uid) {
+                myRes = res;
+            } else {
+                otherRes = res;
             }
-            setCurrentReservation(res);
-        } else {
+        });
+
+        if (myRes) {
+            setCurrentReservation(myRes);
+            setIsOccupiedByOthers(false);
+        } else if (otherRes) {
             setCurrentReservation(null);
+            setIsOccupiedByOthers(true);
+        } else {
+            // Check for completed reservations for this user just for reference, 
+            // but simplified logic: if no active/pending, table is free or completed
+            setCurrentReservation(null);
+            setIsOccupiedByOthers(false);
         }
     });
     return () => unsubscribe();
@@ -347,8 +366,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
       if (!currentReservation) return;
       setIsProcessing(true);
       try {
-          // Store applied offer in a temporary way or update order here if we want to lock it in
-          // For simplicity, we just mark payment pending. The restaurant confirms and logs it.
           await requestCounterPayment(currentReservation.id!, grandTotal);
           showToast("Check requested. Please proceed to counter.", "success");
       } catch (e) { console.error(e); showToast("Request failed", "error"); } finally { setIsProcessing(false); }
@@ -370,15 +387,37 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
           );
 
           // Mark all active orders in this session as paid and update their item statuses
-          const paymentUpdates = existingOrders.map(order => markOrderAsPaid(order.id!));
+          const paymentUpdates = existingOrders.map(async (order) => {
+              // Create bill details snapshot for this order to preserve invoice history including discounts
+              // Calculate portion of discount if multiple orders? Simplified: Attach total discount to the first order or spread it.
+              // For simplicity, we attach the final calculation to the LAST active order or all orders get a paid status.
+              // Here, we update the Order to reflect the final financial snapshot.
+              
+              const breakdown = calculateBill(existingOrders.flatMap(o => o.items), billingConfig);
+              const totalDiscount = offerDiscountAmount + couponDiscountAmount;
+              
+              const billSnapshot = {
+                  subtotal: breakdown.menuSubtotal,
+                  serviceCharge: breakdown.serviceChargeAmount,
+                  tax: breakdown.taxAmount,
+                  discount: totalDiscount,
+                  grandTotal: grandTotal, // Paid amount
+                  discountDetails: appliedCoupon ? `Coupon ${appliedCoupon.code}` : bestPublicOffer ? `Offer ${bestPublicOffer.title}` : ''
+              };
+
+              // Update the order with payment info and snapshot
+              await updateOrder(order.id!, { 
+                  status: 'paid',
+                  items: order.items.map(i => ({ ...i, status: 'paid' })),
+                  billDetails: billSnapshot,
+                  appliedOfferId: appliedCoupon?.id || bestPublicOffer?.id,
+                  appliedDiscountAmount: totalDiscount
+              });
+          });
+          
           await Promise.all(paymentUpdates);
 
           // WALLET: Record bill payment transaction
-          // Online payments are immediately available (status: completed)
-          // We assume 'grandTotal' is the amount the restaurant receives (ignoring platform fee logic for simplicity in this step, 
-          // though ideally we subtract platform fee here).
-          // Let's assume net amount = grandTotal.
-          
           await recordTransaction({
               restaurantId: restaurantId!,
               type: 'bill_payment',
@@ -399,10 +438,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
               const usedOffer = appliedCoupon || bestPublicOffer;
               const discount = appliedCoupon ? couponDiscountAmount : offerDiscountAmount;
               if (usedOffer && discount > 0) {
-                  // We need an order ID to associate. Often multiple orders per session.
-                  // We'll use the most recent active order ID or a generated transaction ID.
                   const refOrderId = existingOrders.length > 0 ? existingOrders[0].id! : 'session-' + currentReservation.id;
-                  
                   await trackOfferUsage(restaurantId!, usedOffer.id!, {
                       userId: currentUser?.uid || 'guest',
                       userName: currentUser?.displayName || 'Guest',
@@ -412,7 +448,9 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
               }
           }
 
+          // Trigger Review Modal immediately after successful payment
           setIsReviewModalOpen(true);
+
       } catch (e) { console.error(e); showToast("Payment recording failed", "error"); } finally { setIsProcessing(false); }
   };
 
@@ -440,6 +478,20 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   // --- Render ---
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-primary-600" size={40} /></div>;
   if (!restaurant || !table) return <div className="p-6 text-center">Invalid Table</div>;
+
+  // Occupied Check
+  if (isOccupiedByOthers) {
+      return (
+        <ClaimView 
+            restaurant={restaurant} 
+            table={table} 
+            onBack={() => navigate(`/restaurant/${restaurantId}`)} 
+            onOccupy={() => {}} 
+            isProcessing={false}
+            occupiedMessage="This table is currently occupied by another guest."
+        />
+      );
+  }
 
   // View: Pending
   if (currentReservation && currentReservation.status === 'pending') {

@@ -34,19 +34,23 @@ export const addReview = async (review: Review): Promise<boolean> => {
       }
 
       // 3. Update Restaurant Profile (User Data - Private)
+      // Note: Not all restaurants might have a "users" doc if data is inconsistent, so we check.
       const userRef = doc(db, "users", review.restaurantId);
       const userDoc = await transaction.get(userRef);
       if(userDoc.exists()) {
          const data = userDoc.data();
-         const currentRating = data.rating || 0;
-         const currentCount = data.ratingCount || 0;
-         const newCount = currentCount + 1;
-         const newRating = ((currentRating * currentCount) + review.rating) / newCount;
-         
-         transaction.update(userRef, {
-            rating: parseFloat(newRating.toFixed(1)),
-            ratingCount: newCount
-         });
+         // Check if user is actually a restaurant (optional safety)
+         if (data.role === 'restaurant' || data.restaurantName) {
+             const currentRating = data.rating || 0;
+             const currentCount = data.ratingCount || 0;
+             const newCount = currentCount + 1;
+             const newRating = ((currentRating * currentCount) + review.rating) / newCount;
+             
+             transaction.update(userRef, {
+                rating: parseFloat(newRating.toFixed(1)),
+                ratingCount: newCount
+             });
+         }
       }
     });
 

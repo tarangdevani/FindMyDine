@@ -36,14 +36,23 @@ export const BillPreview: React.FC<BillPreviewProps> = ({ order, reservation, bi
       // Live Calculation (Legacy orders or live sessions)
       const calculation = calculateBill(order.items, billingConfig, order.customDiscount);
       
+      // Attempt to calculate discount if appliedOfferId exists but no snapshot
+      let totalDiscount = calculation.customDiscountAmount;
+      let discountDesc = order.customDiscount ? 'Manual Adjustment' : '';
+      
+      if (order.appliedDiscountAmount) {
+          totalDiscount += order.appliedDiscountAmount;
+          discountDesc = discountDesc ? `${discountDesc}, Offer Applied` : 'Offer Applied';
+      }
+
       displayDetails = {
           menuSubtotal: calculation.menuSubtotal,
           serviceChargeAmount: calculation.serviceChargeAmount,
           taxAmount: calculation.taxAmount,
-          totalDiscount: calculation.customDiscountAmount,
-          grandTotal: calculation.grandTotal,
+          totalDiscount: totalDiscount,
+          grandTotal: Math.max(0, calculation.grandTotal - (order.appliedDiscountAmount || 0)),
           activeItems: calculation.activeItems,
-          discountDesc: order.customDiscount ? 'Manual Adjustment' : ''
+          discountDesc
       };
   }
 
@@ -193,9 +202,13 @@ export const BillPreview: React.FC<BillPreviewProps> = ({ order, reservation, bi
                                <td className="py-2 w-8 font-bold align-top">{item.quantity}</td>
                                <td className="py-2 align-top">
                                   <span className="block text-gray-900 font-medium">{item.name}</span>
-                                  {item.selectedAddOns?.map((addon, j) => (
-                                     <span key={j} className="block text-[10px] text-gray-500">+ {addon.name}</span>
-                                  ))}
+                                  {item.selectedAddOns && item.selectedAddOns.length > 0 && (
+                                     <div className="mt-1">
+                                        {item.selectedAddOns.map((addon, j) => (
+                                            <span key={j} className="block text-[10px] text-gray-500">+ {addon.name}</span>
+                                        ))}
+                                     </div>
+                                  )}
                                </td>
                                <td className="price py-2 text-right text-gray-900 font-medium align-top">
                                   ${((item.price + (item.selectedAddOns?.reduce((s, a) => s + a.price, 0) || 0)) * item.quantity).toFixed(2)}

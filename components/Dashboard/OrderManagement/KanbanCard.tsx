@@ -39,6 +39,15 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ kItem, columnConfig, onD
             <span className="font-bold text-gray-900 bg-gray-100 px-1.5 rounded">{kItem.item.quantity}x</span>
             <span className="text-gray-900 font-bold">{kItem.item.name}</span>
           </div>
+          {kItem.item.selectedAddOns && kItem.item.selectedAddOns.length > 0 && (
+             <div className="mt-1 ml-6 flex flex-wrap gap-1">
+                {kItem.item.selectedAddOns.map((addon, i) => (
+                   <span key={i} className="text-xs text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                      + {addon.name}
+                   </span>
+                ))}
+             </div>
+          )}
           {kItem.item.notes && (
             <p className="text-xs text-orange-600 mt-1 italic pl-1">Note: {kItem.item.notes}</p>
           )}

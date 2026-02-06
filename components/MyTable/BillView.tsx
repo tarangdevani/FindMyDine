@@ -210,7 +210,8 @@ export const BillView: React.FC<BillViewProps> = ({
                                 onSuccess={(details) => onPayOnline(details, finalTotal)}
                                 disabled={finalTotal <= 0}
                             />
-                            {/* Standard Button Fallback/Alternative */}
+                            {/* Standard Button hidden if using PayPal to avoid confusion */}
+                            {/* 
                             <Button 
                                 size="lg" 
                                 className="w-full bg-primary-600 shadow-xl" 
@@ -220,6 +221,7 @@ export const BillView: React.FC<BillViewProps> = ({
                             >
                                 Pay ${finalTotal.toFixed(2)}
                             </Button>
+                            */}
                         </>
                     ) : (
                         <Button 

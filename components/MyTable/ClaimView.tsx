@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { ArrowLeft, Armchair } from 'lucide-react';
+import { ArrowLeft, Armchair, AlertCircle } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { RestaurantData, TableItem } from '../../types';
 
@@ -9,9 +10,10 @@ interface ClaimViewProps {
   onBack: () => void;
   onOccupy: () => void;
   isProcessing: boolean;
+  occupiedMessage?: string;
 }
 
-export const ClaimView: React.FC<ClaimViewProps> = ({ restaurant, table, onBack, onOccupy, isProcessing }) => {
+export const ClaimView: React.FC<ClaimViewProps> = ({ restaurant, table, onBack, onOccupy, isProcessing, occupiedMessage }) => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
        <div className="bg-white p-4 shadow-sm flex items-center gap-3">
@@ -24,7 +26,17 @@ export const ClaimView: React.FC<ClaimViewProps> = ({ restaurant, table, onBack,
                 <div className="w-24 h-24 bg-white rounded-full mx-auto shadow-lg flex items-center justify-center mb-6 text-primary-600 border-4 border-primary-50"><Armchair size={40} /></div>
                 <h1 className="text-3xl font-extrabold text-gray-900 mb-2">{table.name}</h1>
                 <p className="text-gray-500 font-medium mb-8">{table.area} • {table.seats} Seats</p>
-                <Button size="lg" fullWidth onClick={onOccupy} isLoading={isProcessing} disabled={table.status === 'occupied'}>{table.status === 'occupied' ? 'Table Occupied' : 'Check In & Order'}</Button>
+                
+                {occupiedMessage ? (
+                    <div className="bg-red-50 text-red-600 p-4 rounded-xl flex flex-col items-center gap-2 mb-4">
+                        <AlertCircle size={24} />
+                        <span className="font-bold">{occupiedMessage}</span>
+                    </div>
+                ) : (
+                    <Button size="lg" fullWidth onClick={onOccupy} isLoading={isProcessing} disabled={table.status === 'occupied'}>
+                        {table.status === 'occupied' ? 'Table Occupied' : 'Check In & Order'}
+                    </Button>
+                )}
              </div>
           </div>
        </div>

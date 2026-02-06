@@ -24,7 +24,14 @@ export const KitchenPreview: React.FC<KitchenPreviewProps> = ({ activeItems, onV
                             {activeItems.filter(k => (k.item.status || 'ordered') === col).map(k => (
                                 <div key={k.uniqueId} className="bg-white p-2 rounded shadow-sm text-xs border border-gray-100">
                                     <div className="flex justify-between font-bold mb-1"><span>{k.order.tableName}</span><span className="text-gray-400">#{k.order.id?.slice(-3)}</span></div>
-                                    <p className="text-gray-700">{k.item.quantity}x {k.item.name}</p>
+                                    <p className="text-gray-700 font-medium">{k.item.quantity}x {k.item.name}</p>
+                                    {k.item.selectedAddOns && k.item.selectedAddOns.length > 0 && (
+                                        <div className="mt-1 flex flex-wrap gap-1">
+                                            {k.item.selectedAddOns.map((addon, i) => (
+                                                <span key={i} className="text-[9px] bg-gray-100 text-gray-500 px-1 rounded border border-gray-200">+ {addon.name}</span>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
