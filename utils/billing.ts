@@ -1,6 +1,9 @@
 
 import { BillingConfig, OrderItem } from '../types';
 
+// REPLACE THIS WITH YOUR ACTUAL RAZORPAY MERCHANT KEY ID
+export const PLATFORM_RAZORPAY_KEY = "rzp_test_SEQ9KLTd0x65a4"; 
+
 export interface BillBreakdown {
   rawSubtotal: number;
   menuSubtotal: number;
@@ -16,7 +19,7 @@ export const DEFAULT_BILLING_CONFIG: BillingConfig = {
   serviceChargeRate: 18, // Default US Service Charge
   salesTaxRate: 8.25,    // Default US Sales Tax
   isServiceChargeInclusive: false,
-  isSalesTaxInclusive: false
+  isSalesTaxInclusive: false,
 };
 
 export const calculateBill = (

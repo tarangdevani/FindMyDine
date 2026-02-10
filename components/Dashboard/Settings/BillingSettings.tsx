@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Percent, Save, Receipt, CreditCard } from 'lucide-react';
+import { Save, Receipt } from 'lucide-react';
 import { Button } from '../../UI/Button';
 import { BillingConfig } from '../../../types';
 import { updateRestaurantProfile } from '../../../services/restaurantService';
@@ -19,7 +19,6 @@ export const BillingSettings: React.FC<BillingSettingsProps> = ({ userId, initia
     salesTaxRate: 8.25,
     isServiceChargeInclusive: false,
     isSalesTaxInclusive: false,
-    paypalClientId: ''
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -53,8 +52,8 @@ export const BillingSettings: React.FC<BillingSettingsProps> = ({ userId, initia
            <Receipt size={20} />
          </div>
          <div>
-            <h3 className="text-xl font-bold text-gray-900">Billing & Taxes</h3>
-            <p className="text-xs text-gray-500">Configure tax rates.</p>
+            <h3 className="text-xl font-bold text-gray-900">Billing Configuration</h3>
+            <p className="text-xs text-gray-500">Configure taxes and service charges.</p>
          </div>
       </div>
 
@@ -69,17 +68,14 @@ export const BillingSettings: React.FC<BillingSettingsProps> = ({ userId, initia
             
             <div className="mb-4">
                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Percentage (%)</label>
-                <div className="relative">
-                    <input 
-                        type="number" 
-                        min="0" 
-                        step="0.1"
-                        className="w-full pl-4 pr-10 py-2.5 rounded-lg border border-gray-300 bg-white focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all font-bold text-gray-900"
-                        value={config.serviceChargeRate}
-                        onChange={(e) => setConfig({...config, serviceChargeRate: parseFloat(e.target.value) || 0})}
-                    />
-                    <Percent size={16} className="absolute right-3 top-3 text-gray-400" />
-                </div>
+                <input 
+                    type="number" 
+                    min="0" 
+                    step="0.1"
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 bg-white focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all font-bold text-gray-900"
+                    value={config.serviceChargeRate}
+                    onChange={(e) => setConfig({...config, serviceChargeRate: parseFloat(e.target.value) || 0})}
+                />
             </div>
 
             <div className="p-3 bg-white rounded-lg border border-gray-200 hover:border-primary-300 transition-colors">
@@ -105,17 +101,14 @@ export const BillingSettings: React.FC<BillingSettingsProps> = ({ userId, initia
             
             <div className="mb-4">
                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Percentage (%)</label>
-                <div className="relative">
-                    <input 
-                        type="number" 
-                        min="0" 
-                        step="0.01"
-                        className="w-full pl-4 pr-10 py-2.5 rounded-lg border border-gray-300 bg-white focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all font-bold text-gray-900"
-                        value={config.salesTaxRate}
-                        onChange={(e) => setConfig({...config, salesTaxRate: parseFloat(e.target.value) || 0})}
-                    />
-                    <Percent size={16} className="absolute right-3 top-3 text-gray-400" />
-                </div>
+                <input 
+                    type="number" 
+                    min="0" 
+                    step="0.01"
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 bg-white focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all font-bold text-gray-900"
+                    value={config.salesTaxRate}
+                    onChange={(e) => setConfig({...config, salesTaxRate: parseFloat(e.target.value) || 0})}
+                />
             </div>
 
             <div className="p-3 bg-white rounded-lg border border-gray-200 hover:border-primary-300 transition-colors">

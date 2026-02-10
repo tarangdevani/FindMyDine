@@ -4,7 +4,7 @@ import { Store, CreditCard, Gift, ChevronRight, Tag, AlertCircle } from 'lucide-
 import { Button } from '../UI/Button';
 import { RestaurantData, TableItem, OrderItem, Offer, BillingConfig } from '../../types';
 import { BillBreakdown } from '../../utils/billing';
-import { PayPalButton } from '../UI/PayPalButton';
+import { RazorpayButton } from '../UI/RazorpayButton';
 
 interface BillViewProps {
   restaurant: RestaurantData;
@@ -38,11 +38,6 @@ export const BillView: React.FC<BillViewProps> = ({
 }) => {
   
   const { menuSubtotal, serviceChargeAmount, taxableAmount, taxAmount, grandTotal: rawGrandTotal } = breakdown;
-  
-  // Logic: 
-  // 1. Calculate Grand Total from billing.ts (Subtotal + Service + Tax)
-  // 2. Subtract Discounts
-  // 3. Add Platform Fee (2% of net amount)
   
   const totalDiscount = offerDiscount + couponDiscount;
   const netAmount = Math.max(0, rawGrandTotal - totalDiscount);
@@ -205,23 +200,14 @@ export const BillView: React.FC<BillViewProps> = ({
                 <div className="mt-6 space-y-4">
                     {paymentMethod === 'online' ? (
                         <>
-                            <PayPalButton 
-                                amount={finalTotal} 
-                                onSuccess={(details) => onPayOnline(details, finalTotal)}
+                            <RazorpayButton 
+                                amount={finalTotal}
+                                name={restaurant.name}
+                                description={`Bill Payment - Table ${table.name}`}
+                                image={restaurant.logoUrl}
+                                onSuccess={(details) => onPayOnline({ id: details.razorpay_payment_id, ...details }, finalTotal)}
                                 disabled={finalTotal <= 0}
                             />
-                            {/* Standard Button hidden if using PayPal to avoid confusion */}
-                            {/* 
-                            <Button 
-                                size="lg" 
-                                className="w-full bg-primary-600 shadow-xl" 
-                                onClick={() => onPayOnline({ id: 'manual-' + Date.now() }, finalTotal)}
-                                isLoading={isProcessing}
-                                disabled={finalTotal <= 0}
-                            >
-                                Pay ${finalTotal.toFixed(2)}
-                            </Button>
-                            */}
                         </>
                     ) : (
                         <Button 

@@ -2,7 +2,7 @@
 import React from 'react';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '../../UI/Button';
-import { PayPalButton } from '../../UI/PayPalButton';
+import { RazorpayButton } from '../../UI/RazorpayButton';
 import { TableItem } from '../../../types';
 
 interface BookingActionProps {
@@ -60,9 +60,11 @@ export const BookingAction: React.FC<BookingActionProps> = ({
             
             {reservationFee > 0 ? (
                 <div className="w-full">
-                    <PayPalButton 
-                        amount={reservationFee} 
-                        onSuccess={onConfirmBooking}
+                    <RazorpayButton 
+                        amount={reservationFee}
+                        name="Reservation Fee"
+                        description={`Booking for ${selectedTable.name}`}
+                        onSuccess={(response) => onConfirmBooking({ id: response.razorpay_payment_id, purchase_units: [{ amount: { value: reservationFee } }] })}
                         disabled={!selectedTable}
                     />
                 </div>

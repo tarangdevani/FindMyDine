@@ -11,7 +11,6 @@ export interface BillingConfig {
   salesTaxRate: number;
   isServiceChargeInclusive: boolean;
   isSalesTaxInclusive: boolean;
-  paypalClientId?: string; // New field for PayPal
 }
 
 export interface ReservationConfig {
@@ -333,6 +332,7 @@ export interface FloorPlanData {
 
 declare global {
   interface Window {
+    Razorpay: any;
     paypal: any;
   }
 }
