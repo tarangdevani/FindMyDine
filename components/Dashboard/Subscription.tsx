@@ -93,11 +93,6 @@ export const Subscription: React.FC<SubscriptionProps> = ({ userId }) => {
         { label: "Delete Reviews", available: plan.deleteReview },
     ];
 
-    // Add specific Free Plan feature line
-    if (id === 'free') {
-        features.splice(1, 0, { label: "Read & Access all your previous data", available: true });
-    }
-
     return (
         <div className={`relative flex flex-col p-6 rounded-2xl border-2 transition-all ${isCurrent ? 'border-green-500 bg-green-50/30' : 'border-gray-200 bg-white hover:border-primary-300 hover:shadow-lg'}`}>
             {id === 'pro' && !isCurrent && <div className="absolute top-0 right-0 bg-primary-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl rounded-tr-lg uppercase tracking-wider">Most Popular</div>}

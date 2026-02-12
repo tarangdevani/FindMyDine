@@ -6,7 +6,7 @@ import {
   ChevronRight, ChevronLeft, LogOut, Star, Wallet, Store, 
   UtensilsCrossed, BarChart3, GripVertical, Users, CreditCard
 } from 'lucide-react';
-import { UserProfile, UserRole } from '../../types';
+import { UserProfile, UserRole, RestaurantProfile } from '../../types';
 
 export type DashboardView = 'overview' | 'reservations' | 'bookings' | 'orders' | 'billing' | 'offers' | 'reviews' | 'menu' | 'tables' | 'ai-photography' | 'customers' | 'settings' | 'profile' | 'wallet' | 'financials' | 'staff' | 'subscription';
 
@@ -54,8 +54,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   user, onLogoutClick 
 }) => {
 
-  const restaurantName = user?.restaurantName || user?.displayName || 'Restaurant';
-  const restaurantLogoUrl = (user as any)?.logoUrl; 
+  const restaurantName = (user as RestaurantProfile)?.restaurantName || user?.displayName || 'Restaurant';
+  const restaurantLogoUrl = (user as RestaurantProfile)?.logoUrl; 
 
   const [navItems, setNavItems] = useState<NavItemConfig[]>(DEFAULT_NAV_ITEMS);
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);

@@ -16,7 +16,7 @@ export const PLAN_CONFIGS: Record<string, PlanConfig> = {
   free: { price: 0, name: 'Free', photos: 0, write: false, deleteReview: false },
   base: { price: 15, name: 'Base', photos: 0, write: true, deleteReview: false },
   pro: { price: 20, name: 'Pro', photos: 30, write: true, deleteReview: false },
-  ultra: { price: 25, name: 'Ultra', photos: 60, write: true, deleteReview: true }
+  ultra: { price: 25, name: 'Ultra', photos: 50, write: true, deleteReview: true }
 };
 
 export const DURATION_DISCOUNTS: Record<number, number> = {
