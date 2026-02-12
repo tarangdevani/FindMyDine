@@ -13,7 +13,8 @@ export const MOCK_RESTAURANTS: RestaurantData[] = [
     deliveryTime: "30-45 min",
     cuisine: "Italian",
     distance: "0.5 km",
-    isOpen: true
+    isOpen: true,
+    subscriptionPlan: 'pro'
   },
   {
     id: '2',
@@ -26,7 +27,8 @@ export const MOCK_RESTAURANTS: RestaurantData[] = [
     deliveryTime: "40-55 min",
     cuisine: "Japanese",
     distance: "1.2 km",
-    isOpen: true
+    isOpen: true,
+    subscriptionPlan: 'pro'
   },
   {
     id: '3',
@@ -39,7 +41,8 @@ export const MOCK_RESTAURANTS: RestaurantData[] = [
     deliveryTime: "15-25 min",
     cuisine: "American",
     distance: "2.5 km",
-    isOpen: false
+    isOpen: false,
+    subscriptionPlan: 'pro'
   },
   {
     id: '4',
@@ -52,7 +55,8 @@ export const MOCK_RESTAURANTS: RestaurantData[] = [
     deliveryTime: "35-50 min",
     cuisine: "Indian",
     distance: "0.8 km",
-    isOpen: true
+    isOpen: true,
+    subscriptionPlan: 'pro'
   },
   {
     id: '5',
@@ -65,7 +69,8 @@ export const MOCK_RESTAURANTS: RestaurantData[] = [
     deliveryTime: "45-60 min",
     cuisine: "French",
     distance: "3.0 km",
-    isOpen: true
+    isOpen: true,
+    subscriptionPlan: 'pro'
   },
   {
     id: '6',
@@ -78,6 +83,7 @@ export const MOCK_RESTAURANTS: RestaurantData[] = [
     deliveryTime: "20-35 min",
     cuisine: "Mexican",
     distance: "1.5 km",
-    isOpen: true
+    isOpen: true,
+    subscriptionPlan: 'pro'
   }
 ];

@@ -208,12 +208,13 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
 
   // --- Filtering & Sorting Effect ---
   useEffect(() => {
-    // 1. Pre-filter: Only show restaurants that are active AND have a paid plan (Base/Pro/Ultra)
+    // 1. Pre-filter: Only show restaurants that have a paid plan (Base/Pro/Ultra)
     // Free plan restaurants are hidden from public view
+    // Note: We show restaurants even if isOpen is false, so users can book for later dates.
     let updated = restaurants.filter(r => {
-       const hasPaidPlan = r.subscriptionPlan && r.subscriptionPlan !== 'free';
-       // We can check isVerified as well if desired
-       return r.isOpen && hasPaidPlan; 
+       const validPlans = ['base', 'pro', 'ultra'];
+       const hasPaidPlan = r.subscriptionPlan && validPlans.includes(r.subscriptionPlan);
+       return hasPaidPlan;
     });
 
     // 2. Filter by Search
