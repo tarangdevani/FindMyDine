@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { User, Menu, LayoutDashboard, Heart, Calendar, LogOut, AlertCircle, X, BookOpen } from 'lucide-react';
+import { User, Menu, LayoutDashboard, Heart, Calendar, LogOut, AlertCircle, X, BookOpen, UtensilsCrossed } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { UserProfile, UserRole } from '../../types';
 
@@ -37,29 +37,15 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, currentUser, onLog
             {/* Logo */}
             <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
               <div className="bg-primary-600 text-white p-2.5 rounded-xl shadow-lg shadow-primary-600/20 group-hover:scale-105 transition-transform duration-300">
-                {/* Custom 'Scanned Fork' Logo Icon */}
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-                  {/* Viewfinder Corners */}
-                  <path d="M4 7V5a1 1 0 0 1 1-1h2" />
-                  <path d="M17 4h2a1 1 0 0 1 1 1v2" />
-                  <path d="M20 17v2a1 1 0 0 1-1 1h-2" />
-                  <path d="M7 20H5a1 1 0 0 1-1-1v-2" />
-                  
-                  {/* The Fork */}
-                  <path d="M12 8v9" strokeWidth="2" />
-                  <path d="M9 8v4c0 1.5 1.5 2 3 2s3-.5 3-2V8" strokeWidth="2" />
-                  
-                  {/* The Scan Line (Laser) */}
-                  <path d="M3 12h18" strokeWidth="1.5" strokeDasharray="3 3" strokeOpacity="0.7" />
-                </svg>
+                <UtensilsCrossed size={24} className="text-white" />
               </div>
               <span className="text-2xl font-bold text-gray-900 tracking-tight">
                 FindMyDine
               </span>
             </div>
 
-            {/* Desktop Navigation (Logged In Customer) */}
-            {currentUser && currentUser.role === UserRole.CUSTOMER && (
+            {/* Desktop Navigation (Logged In Customer/Staff) */}
+            {currentUser && (currentUser.role === UserRole.CUSTOMER || currentUser.role === UserRole.STAFF) && (
               <nav className="hidden md:flex items-center gap-1">
                 <button 
                   onClick={() => navigate('/my-bookings')}
@@ -85,16 +71,32 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, currentUser, onLog
             {/* Actions */}
             <div className="flex items-center gap-4">
               {currentUser ? (
-                currentUser.role === UserRole.RESTAURANT ? (
-                  <Button 
-                    variant="primary" 
-                    size="sm" 
-                    onClick={() => navigate('/dashboard')}
-                    className="flex items-center gap-2"
-                  >
-                    <LayoutDashboard size={16} />
-                    Go to Dashboard
-                  </Button>
+                currentUser.role === UserRole.RESTAURANT || currentUser.role === UserRole.STAFF ? (
+                  <div className="flex items-center gap-2">
+                      <Button 
+                        variant="primary" 
+                        size="sm" 
+                        onClick={() => navigate('/dashboard')}
+                        className="flex items-center gap-2 hidden md:flex"
+                      >
+                        <LayoutDashboard size={16} />
+                        {currentUser.role === UserRole.STAFF ? 'Staff Portal' : 'Dashboard'}
+                      </Button>
+                      
+                      {/* Avatar for Staff/Resto too */}
+                      <div className="flex items-center gap-2 bg-gray-50 pl-1 pr-1 py-1 rounded-full border border-gray-200">
+                        <div className="h-8 w-8 rounded-full bg-white shadow-sm flex items-center justify-center text-primary-600 border border-gray-100">
+                          <User size={16} />
+                        </div>
+                        <button 
+                          onClick={handleLogoutClick}
+                          className="p-1.5 rounded-full hover:bg-white hover:text-red-500 hover:shadow-sm transition-all text-gray-400"
+                          title="Log out"
+                        >
+                          <LogOut size={16} />
+                        </button>
+                      </div>
+                  </div>
                 ) : (
                   // Customer Profile Pill
                   <div className="flex items-center gap-2 bg-gray-50 pl-1 pr-1 py-1 rounded-full border border-gray-200">
@@ -144,7 +146,12 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, currentUser, onLog
            </div>
            <div className="flex-1 p-6 space-y-4">
               <button onClick={() => { navigate('/'); setIsMobileMenuOpen(false); }} className="w-full text-left text-lg font-medium text-gray-900 py-2">Home</button>
-              {currentUser && currentUser.role === UserRole.CUSTOMER && (
+              
+              {currentUser && (currentUser.role === UserRole.RESTAURANT || currentUser.role === UserRole.STAFF) && (
+                 <button onClick={() => { navigate('/dashboard'); setIsMobileMenuOpen(false); }} className="w-full text-left text-lg font-bold text-primary-600 py-2 flex items-center gap-3"><LayoutDashboard size={20}/> Go to Dashboard</button>
+              )}
+
+              {currentUser && (
                 <>
                   <button onClick={() => { navigate('/my-bookings'); setIsMobileMenuOpen(false); }} className="w-full text-left text-lg font-medium text-gray-900 py-2 flex items-center gap-3"><BookOpen size={20}/> My Bookings</button>
                   <button onClick={() => { navigate('/my-reservations'); setIsMobileMenuOpen(false); }} className="w-full text-left text-lg font-medium text-gray-900 py-2 flex items-center gap-3"><Calendar size={20}/> My Reservations</button>

@@ -6,6 +6,7 @@ import { UserRole } from '../../types';
 import { auth, db, googleProvider } from '../../lib/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, updateProfile } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { PLAN_CONFIGS } from '../../services/subscriptionService';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -60,6 +61,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
   };
 
   const createUserProfile = async (uid: string, email: string) => {
+    let subscriptionData = undefined;
+
+    if (role === UserRole.RESTAURANT) {
+        const now = new Date();
+        const expiry = new Date(now);
+        expiry.setMonth(expiry.getMonth() + 3); // 3 Months Free Base Plan
+
+        subscriptionData = {
+            plan: 'base',
+            startDate: now.toISOString(),
+            expiryDate: expiry.toISOString(),
+            isValid: true,
+            aiPhotosLimit: PLAN_CONFIGS['base'].photos,
+            aiPhotosUsed: 0,
+            autoRenew: false
+        };
+    }
+
     const userProfile = {
       uid,
       email,
@@ -70,10 +89,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
       // Add restaurant specific fields if applicable
       ...(role === UserRole.RESTAURANT && {
         restaurantName: formData.name,
+        subscription: subscriptionData, // Grant 3-month base plan
       })
     };
 
     await setDoc(doc(db, "users", uid), userProfile);
+    
+    // Also init public doc for search filtering immediately
+    if (role === UserRole.RESTAURANT) {
+        await setDoc(doc(db, "restaurants", uid), {
+            name: formData.name,
+            subscriptionPlan: 'base', // Ensure visibility logic works
+            isOpen: false, // Default closed until setup
+            createdAt: new Date().toISOString()
+        }, { merge: true });
+    }
+
     return userProfile;
   };
 

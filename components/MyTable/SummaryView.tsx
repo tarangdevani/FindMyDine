@@ -1,16 +1,25 @@
+
 import React from 'react';
-import { Star, Utensils, UtensilsCrossed } from 'lucide-react';
-import { RestaurantData, TableItem, OrderItem } from '../../types';
+import { Star, Utensils, UtensilsCrossed, Edit2, MessageSquarePlus } from 'lucide-react';
+import { RestaurantData, TableItem, OrderItem, Review } from '../../types';
 
 interface SummaryViewProps {
   restaurant: RestaurantData;
   table: TableItem;
   displayItems: (OrderItem & { orderId: string, itemIndex: number, status: string })[];
+  userReview: Review | null;
+  onAddReview: () => void;
+  onEditReview: () => void;
 }
 
-export const SummaryView: React.FC<SummaryViewProps> = ({ restaurant, table, displayItems }) => {
+export const SummaryView: React.FC<SummaryViewProps> = ({ 
+  restaurant, table, displayItems, 
+  userReview, onAddReview, onEditReview 
+}) => {
   return (
     <div className="p-4 space-y-4 animate-fade-in">
+        
+        {/* Restaurant Header Card */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-start">
             <div className="flex-1 pr-4">
                 <h2 className="text-xl font-extrabold text-gray-900 leading-tight mb-1">{restaurant.name}</h2>
@@ -28,6 +37,40 @@ export const SummaryView: React.FC<SummaryViewProps> = ({ restaurant, table, dis
                 <span className="text-xl font-black leading-none">{table.name.replace('Table ', '')}</span>
             </div>
         </div>
+
+        {/* My Review Section */}
+        {userReview ? (
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-2xl border border-blue-100 flex justify-between items-center shadow-sm">
+               <div className="flex-1 min-w-0 pr-4">
+                  <div className="flex items-center gap-2 mb-1">
+                     <span className="text-xs font-bold text-blue-600 uppercase tracking-wide">Your Review</span>
+                     <div className="flex">
+                        {[...Array(5)].map((_, i) => (
+                           <Star key={i} size={10} className={i < userReview.rating ? "text-yellow-400 fill-current" : "text-gray-300 fill-gray-200"} />
+                        ))}
+                     </div>
+                  </div>
+                  <p className="text-sm text-gray-700 font-medium truncate italic">"{userReview.comment}"</p>
+               </div>
+               <button 
+                 onClick={onEditReview}
+                 className="p-2 bg-white rounded-xl shadow-sm text-blue-600 hover:text-blue-800 hover:shadow-md transition-all shrink-0"
+                 title="Edit Review"
+               >
+                 <Edit2 size={16} />
+               </button>
+            </div>
+        ) : (
+            <button 
+              onClick={onAddReview}
+              className="w-full bg-white p-4 rounded-2xl border border-dashed border-gray-300 hover:border-primary-300 hover:bg-primary-50 transition-all flex items-center justify-center gap-2 text-gray-500 hover:text-primary-600 group"
+            >
+               <div className="w-8 h-8 rounded-full bg-gray-100 group-hover:bg-white flex items-center justify-center transition-colors">
+                  <MessageSquarePlus size={16} />
+               </div>
+               <span className="font-bold text-sm">Rate Your Experience</span>
+            </button>
+        )}
 
         <div>
             <h3 className="font-bold text-gray-900 text-lg mb-3 pl-1">Ordered Items</h3>

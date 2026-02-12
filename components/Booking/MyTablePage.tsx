@@ -1,15 +1,15 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Loader2, ArrowLeft, CheckCircle, Receipt, Utensils } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle, Receipt, Utensils, AlertTriangle } from 'lucide-react';
 import { getRestaurantById } from '../../services/restaurantService';
 import { getTables } from '../../services/tableService';
 import { getMenu, getCategories } from '../../services/menuService';
 import { getOffers, trackOfferUsage } from '../../services/offerService'; 
 import { createReservation, requestCounterPayment, completeReservation } from '../../services/reservationService';
 import { createOrder, getOrdersByReservation, updateOrderItemStatus, updateOrder, markOrderAsPaid } from '../../services/orderService';
-import { addReview } from '../../services/reviewService';
-import { UserProfile, RestaurantData, TableItem, Reservation, MenuItem, FoodCategory, OrderItem, Order, OrderStatus, Offer, FoodAddOn, BillingConfig } from '../../types';
+import { addReview, getUserReview, updateReview } from '../../services/reviewService';
+import { UserProfile, RestaurantData, TableItem, Reservation, MenuItem, FoodCategory, OrderItem, Order, OrderStatus, Offer, FoodAddOn, BillingConfig, Review } from '../../types';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { calculateBill, DEFAULT_BILLING_CONFIG } from '../../utils/billing';
@@ -26,6 +26,7 @@ import { AddOnModal } from '../MyTable/AddOnModal';
 import { OffersSheet } from '../MyTable/OffersSheet';
 import { CartBottomSheet } from '../MyTable/CartBottomSheet';
 import { ReviewModal } from '../Reviews/ReviewModal';
+import { Button } from '../UI/Button';
 
 interface MyTablePageProps {
   currentUser: UserProfile | null;
@@ -49,11 +50,15 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   
   // Occupancy State
   const [isOccupiedByOthers, setIsOccupiedByOthers] = useState(false);
+  const [planInvalid, setPlanInvalid] = useState(false);
 
   // Menu & Offers
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<FoodCategory[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
+  
+  // Review State
+  const [userReview, setUserReview] = useState<Review | null>(null);
   
   // UI State
   const [activeView, setActiveView] = useState<ViewMode>('summary');
@@ -92,6 +97,14 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
       setIsLoading(true);
       try {
         const rData = await getRestaurantById(restaurantId);
+        
+        // Subscription Check: Free Plan (or no plan) blocks QR Scanning
+        if (!rData?.subscriptionPlan || rData.subscriptionPlan === 'free') {
+            setPlanInvalid(true);
+            setIsLoading(false);
+            return;
+        }
+
         const tData = await getTables(restaurantId);
         const targetTable = tData.find(t => t.id === tableId);
         setRestaurant(rData);
@@ -122,9 +135,18 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
     fetchData();
   }, [restaurantId, tableId]);
 
+  // --- 1.5 Load User Review ---
+  useEffect(() => {
+    if (restaurantId && currentUser) {
+        getUserReview(restaurantId, currentUser.uid).then(review => {
+            setUserReview(review);
+        });
+    }
+  }, [restaurantId, currentUser]);
+
   // --- 2. Listen for Reservation & Occupancy Validation ---
   useEffect(() => {
-    if (!currentUser || !tableId || !restaurantId) return;
+    if (!currentUser || !tableId || !restaurantId || planInvalid) return;
     
     const q = query(
         collection(db, "reservations"),
@@ -157,7 +179,10 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
             // Check for Payment Acceptance (Counter Payment)
             if (myRes.paymentStatus === 'paid' && !hasReviewOpenedRef.current) {
                 hasReviewOpenedRef.current = true;
-                setIsReviewModalOpen(true);
+                // Only open review modal if user hasn't reviewed yet, otherwise they can edit via SummaryView
+                if (!userReview) {
+                    setIsReviewModalOpen(true);
+                }
             }
         } else if (otherRes) {
             setCurrentReservation(null);
@@ -169,10 +194,11 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
         }
     });
     return () => unsubscribe();
-  }, [currentUser, tableId, restaurantId]);
+  }, [currentUser, tableId, restaurantId, userReview, planInvalid]); 
 
   // --- 3. Fetch Orders ---
   useEffect(() => {
+    if (planInvalid) return;
     const fetchOrders = async () => {
         if (currentReservation?.id) {
             const orders = await getOrdersByReservation(currentReservation.id);
@@ -182,7 +208,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
     fetchOrders();
     const interval = setInterval(fetchOrders, 5000); 
     return () => clearInterval(interval);
-  }, [currentReservation, activeView]);
+  }, [currentReservation, activeView, planInvalid]);
 
   // --- 4. Auto-Calculate Offers ---
   useEffect(() => {
@@ -370,10 +396,9 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
       if (!currentReservation) return;
       setIsProcessing(true);
       try {
-          // 1. Save discount info to the order(s) so restaurant sees it in dashboard invoice
           const totalDiscount = offerDiscountAmount + couponDiscountAmount;
           if (totalDiscount > 0 || appliedCoupon || bestPublicOffer) {
-              const activeOrder = existingOrders[existingOrders.length - 1]; // Attach to latest order
+              const activeOrder = existingOrders[existingOrders.length - 1]; 
               if (activeOrder) {
                   await updateOrder(activeOrder.id!, {
                       appliedOfferId: appliedCoupon?.id || bestPublicOffer?.id,
@@ -382,7 +407,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
               }
           }
 
-          // 2. Request Payment
           await requestCounterPayment(currentReservation.id!, grandTotal);
           showToast("Check requested. Please proceed to counter.", "success");
       } catch (e) { 
@@ -461,9 +485,10 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
               }
           }
 
-          // Force Review Modal Open immediately
-          hasReviewOpenedRef.current = true;
-          setIsReviewModalOpen(true);
+          if (!userReview) {
+              hasReviewOpenedRef.current = true;
+              setIsReviewModalOpen(true);
+          }
 
       } catch (e) { 
           console.error(e); 
@@ -475,27 +500,56 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
 
   const handleReviewSubmit = async (rating: number, comment: string) => {
     if (!currentUser || !restaurant) return;
-    const success = await addReview({
-        restaurantId: restaurant.id,
-        userId: currentUser.uid,
-        userName: currentUser.displayName || 'Guest',
-        rating,
-        comment,
-        createdAt: new Date().toISOString()
-    });
     
-    if (success) {
-        showToast("Review submitted! Thank you.", "success");
+    let success;
+    if (userReview) {
+        success = await updateReview(userReview.id!, restaurant.id, rating, comment);
+        if (success) {
+            setUserReview({ ...userReview, rating, comment });
+            showToast("Review updated successfully", "success");
+        }
     } else {
-        showToast("Failed to submit review.", "error");
+        success = await addReview({
+            restaurantId: restaurant.id,
+            userId: currentUser.uid,
+            userName: currentUser.displayName || 'Guest',
+            rating,
+            comment,
+            createdAt: new Date().toISOString()
+        });
+        if (success) {
+            showToast("Review submitted! Thank you.", "success");
+            getUserReview(restaurant.id, currentUser.uid).then(setUserReview);
+        }
+    }
+    
+    if (!success) {
+        showToast("Failed to save review.", "error");
     }
     
     setIsReviewModalOpen(false);
-    navigate('/');
   };
 
-  // --- Render ---
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-primary-600" size={40} /></div>;
+  
+  // --- RESTRICTION SCREEN ---
+  if (planInvalid) {
+      return (
+          <div className="min-h-screen bg-gray-100 flex items-center justify-center p-6">
+              <div className="bg-white rounded-3xl shadow-xl max-w-sm w-full p-8 text-center border-t-8 border-red-500">
+                  <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <AlertTriangle size={40} className="text-red-500" />
+                  </div>
+                  <h2 className="text-2xl font-black text-gray-900 mb-2">Access Restricted</h2>
+                  <p className="text-gray-500 mb-6 text-sm">
+                      This restaurant does not have an active service plan to support QR ordering.
+                  </p>
+                  <Button fullWidth onClick={() => navigate('/')}>Return Home</Button>
+              </div>
+          </div>
+      );
+  }
+
   if (!restaurant || !table) return <div className="p-6 text-center">Invalid Table</div>;
 
   // Occupied Check
@@ -517,7 +571,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
       return <WaitingView table={table} />;
   }
 
-  // View: Active OR Completed (Show bill view/modal until they leave)
+  // View: Active OR Completed
   if (currentReservation && (currentReservation.status === 'active' || currentReservation.status === 'completed')) {
       const displayItems = existingOrders.flatMap(order => 
           order.items.map((item, index) => ({ 
@@ -553,7 +607,16 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
                 </div>
             </div>
 
-            {activeView === 'summary' && <SummaryView restaurant={restaurant} table={table} displayItems={displayItems} />}
+            {activeView === 'summary' && (
+                <SummaryView 
+                    restaurant={restaurant} 
+                    table={table} 
+                    displayItems={displayItems}
+                    userReview={userReview}
+                    onAddReview={() => setIsReviewModalOpen(true)}
+                    onEditReview={() => setIsReviewModalOpen(true)}
+                />
+            )}
             {activeView === 'menu' && <MenuView categories={categories} menuItems={menuItems} activeCategory={activeCategory} onCategoryChange={setActiveCategory} onItemClick={handleItemClick} />}
             {activeView === 'bill' && (
                 <BillView 
@@ -628,9 +691,10 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
 
             <ReviewModal 
                 isOpen={isReviewModalOpen}
-                onClose={() => { setIsReviewModalOpen(false); navigate('/'); }}
+                onClose={() => { setIsReviewModalOpen(false); }}
                 onSubmit={handleReviewSubmit}
                 restaurantName={restaurant.name}
+                initialData={userReview}
             />
         </div>
       );

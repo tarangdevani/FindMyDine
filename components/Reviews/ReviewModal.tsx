@@ -1,19 +1,34 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Star, X } from 'lucide-react';
 import { Button } from '../UI/Button';
+import { Review } from '../../types';
 
 interface ReviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (rating: number, comment: string) => Promise<void>;
   restaurantName: string;
+  initialData?: Review | null;
 }
 
-export const ReviewModal: React.FC<ReviewModalProps> = ({ isOpen, onClose, onSubmit, restaurantName }) => {
+export const ReviewModal: React.FC<ReviewModalProps> = ({ isOpen, onClose, onSubmit, restaurantName, initialData }) => {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Pre-fill data when opening or when initialData changes
+  useEffect(() => {
+    if (isOpen) {
+      if (initialData) {
+        setRating(initialData.rating);
+        setComment(initialData.comment);
+      } else {
+        setRating(5);
+        setComment('');
+      }
+    }
+  }, [isOpen, initialData]);
 
   if (!isOpen) return null;
 
@@ -32,7 +47,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ isOpen, onClose, onSub
         </button>
 
         <div className="text-center mb-6">
-            <h3 className="text-xl font-black text-gray-900 mb-2">Rate your experience</h3>
+            <h3 className="text-xl font-black text-gray-900 mb-2">{initialData ? 'Update Review' : 'Rate your experience'}</h3>
             <p className="text-sm text-gray-500">How was your meal at <span className="font-bold text-primary-600">{restaurantName}</span>?</p>
         </div>
 
@@ -61,7 +76,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ isOpen, onClose, onSub
         ></textarea>
 
         <Button fullWidth size="lg" onClick={handleSubmit} isLoading={isSubmitting} className="shadow-lg shadow-primary-500/20">
-            Submit Review
+            {initialData ? 'Update Review' : 'Submit Review'}
         </Button>
       </div>
     </div>

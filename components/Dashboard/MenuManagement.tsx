@@ -15,9 +15,10 @@ import { MenuFormModal } from './Menu/MenuFormModal';
 
 interface MenuManagementProps {
   userId: string;
+  isReadOnly?: boolean;
 }
 
-export const MenuManagement: React.FC<MenuManagementProps> = ({ userId }) => {
+export const MenuManagement: React.FC<MenuManagementProps> = ({ userId, isReadOnly }) => {
   const { showToast } = useToast();
   const [items, setItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<FoodCategory[]>([]);
@@ -74,6 +75,10 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({ userId }) => {
   };
 
   const handleOpenModal = (item?: MenuItem) => {
+    if (isReadOnly) {
+        showToast("Free Plan is Read-Only. Upgrade to edit menu.", "warning");
+        return;
+    }
     if (item) {
       setEditingItem(item);
       setFormData({ 
@@ -234,6 +239,10 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({ userId }) => {
   };
 
   const handleDelete = async (id: string) => {
+    if (isReadOnly) {
+        showToast("Free Plan is Read-Only.", "warning");
+        return;
+    }
     if (confirm('Are you sure you want to delete this item?')) {
       try {
         // Find item to get image URL for deletion
@@ -282,7 +291,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({ userId }) => {
            <h2 className="text-2xl font-bold text-gray-900">Menu Management</h2>
            <p className="text-gray-500">Organize your dishes, pricing, and availability.</p>
         </div>
-        <Button onClick={() => handleOpenModal()}>
+        <Button onClick={() => handleOpenModal()} disabled={isReadOnly} className={isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}>
            <Plus size={20} className="mr-2" /> Add New Item
         </Button>
       </div>
@@ -298,7 +307,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({ userId }) => {
            </div>
            <h3 className="text-lg font-bold text-gray-900 mb-2">Your menu is empty</h3>
            <p className="text-gray-500 mb-6">Start by adding delicious items to your menu.</p>
-           <Button variant="outline" onClick={() => handleOpenModal()}>Add Your First Item</Button>
+           <Button variant="outline" onClick={() => handleOpenModal()} disabled={isReadOnly}>Add Your First Item</Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

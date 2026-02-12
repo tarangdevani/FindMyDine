@@ -1,17 +1,23 @@
 
 import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
-import { Reservation, TableItem, Order } from '../../types';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc } from "firebase/firestore";
+import { Reservation, TableItem, Order, MenuItem, OrderStatus } from '../../types';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs } from "firebase/firestore";
 import { db } from '../../lib/firebase';
-import { updateTable } from '../../services/tableService';
+import { updateTable, getTables } from '../../services/tableService';
 import { completeReservation } from '../../services/reservationService';
+import { markOrderAsPaid, getOrdersByReservation, updateOrderItemStatus } from '../../services/orderService';
+import { getRestaurantProfile } from '../../services/restaurantService';
+import { getMenu } from '../../services/menuService';
 import { DashboardView } from './Sidebar';
+import { useToast } from '../../context/ToastContext';
 
 // Child Components
-import { UrgentAlerts } from './Overview/UrgentAlerts';
+import { SetupWarnings } from './Overview/SetupWarnings';
+import { WalkInRequests } from './Overview/WalkInRequests';
+import { BillRequests } from './Overview/BillRequests';
 import { TableStatusGrid } from './Overview/TableStatusGrid';
-import { KitchenPreview } from './Overview/KitchenPreview';
+import { InteractiveKitchen } from './Overview/InteractiveKitchen';
 
 interface OverviewProps {
   userId: string;
@@ -19,12 +25,39 @@ interface OverviewProps {
 }
 
 export const Overview: React.FC<OverviewProps> = ({ userId, onViewChange }) => {
+    const { showToast } = useToast();
+    const [loading, setLoading] = useState(true);
+    
+    // Real-time Data
     const [liveRequests, setLiveRequests] = useState<Reservation[]>([]);
     const [pendingPayments, setPendingPayments] = useState<Reservation[]>([]);
     const [tables, setTables] = useState<TableItem[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
-    const [loading, setLoading] = useState(true);
     
+    // Setup Check Data
+    const [menuCount, setMenuCount] = useState(0);
+    const [profileCompleted, setProfileCompleted] = useState(true);
+
+    // Initial Data Load (One-time checks)
+    useEffect(() => {
+        const initChecks = async () => {
+            try {
+                const [menuData, profileData] = await Promise.all([
+                    getMenu(userId),
+                    getRestaurantProfile(userId)
+                ]);
+                setMenuCount(menuData.length);
+                // Check essential profile fields
+                const isComplete = !!(profileData?.restaurantName && profileData?.address && profileData?.logoUrl);
+                setProfileCompleted(isComplete);
+            } catch (e) {
+                console.error("Init check failed", e);
+            }
+        };
+        initChecks();
+    }, [userId]);
+    
+    // Real-time Listeners
     useEffect(() => {
         // 1. Listen for Reservations (Requests & Payments)
         const qLive = query(
@@ -34,7 +67,9 @@ export const Overview: React.FC<OverviewProps> = ({ userId, onViewChange }) => {
         );
         const unsubRequests = onSnapshot(qLive, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Reservation));
+            // Requests: Pending + Walk-in
             setLiveRequests(data.filter(r => r.status === 'pending' && r.type === 'walk_in'));
+            // Payments: Pending Counter + Not Completed/Paid yet
             setPendingPayments(data.filter(r => r.paymentStatus === 'pending_counter' && r.status !== 'completed'));
             setLoading(false);
         });
@@ -66,9 +101,25 @@ export const Overview: React.FC<OverviewProps> = ({ userId, onViewChange }) => {
         };
     }, [userId]);
 
+    // --- Actions ---
+
     const handleMarkPaid = async (res: Reservation) => {
-        if (!confirm(`Mark Table ${res.tableName} as Paid? This will end the session.`)) return;
-        await completeReservation(res.id!, userId, res.tableId);
+        if (!confirm(`Confirm payment received for ${res.tableName}?`)) return;
+        
+        try {
+            // 1. Complete Reservation
+            await completeReservation(res.id!, userId, res.tableId, { totalBillAmount: res.totalBillAmount });
+            
+            // 2. Find and Mark Associated Orders as Paid
+            const resOrders = await getOrdersByReservation(res.id!);
+            const updatePromises = resOrders.map(o => markOrderAsPaid(o.id!));
+            await Promise.all(updatePromises);
+            
+            showToast("Bill marked as paid & table freed.", "success");
+        } catch (e) {
+            console.error(e);
+            showToast("Failed to process payment.", "error");
+        }
     };
 
     const handleRequestAction = async (reservation: Reservation, action: 'confirm' | 'decline') => {
@@ -81,6 +132,7 @@ export const Overview: React.FC<OverviewProps> = ({ userId, onViewChange }) => {
         if (action === 'confirm' && reservation.tableId) {
             const tableRef = doc(db, "users", userId, "tables", reservation.tableId);
             await updateDoc(tableRef, { status: 'occupied' });
+            showToast(`${reservation.tableName} is now active.`, "success");
         }
     };
 
@@ -90,8 +142,17 @@ export const Overview: React.FC<OverviewProps> = ({ userId, onViewChange }) => {
         await updateTable(userId, { id: table.id, status: newStatus } as TableItem);
     };
 
-    const activeItems = orders.flatMap(order => order.items.map((item, idx) => ({ uniqueId: `${order.id}_${idx}`, order: order, item: item }))
-        .filter(k => ['ordered', 'preparing', 'served'].includes(k.item.status || 'ordered'))
+    const handleKitchenStatusUpdate = async (uniqueId: string, newStatus: OrderStatus) => {
+        const [orderId, idxStr] = uniqueId.split('_');
+        const itemIndex = parseInt(idxStr);
+        await updateOrderItemStatus(orderId, itemIndex, newStatus);
+    };
+
+    // Filter active items for kitchen
+    const activeKitchenItems = orders.flatMap(order => 
+        order.items
+            .map((item, idx) => ({ uniqueId: `${order.id}_${idx}`, order: order, item: item }))
+            .filter(k => ['ordered', 'preparing', 'served'].includes(k.item.status || 'ordered'))
     );
 
     if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary-600" size={32} /></div>;
@@ -99,21 +160,43 @@ export const Overview: React.FC<OverviewProps> = ({ userId, onViewChange }) => {
     return (
       <div className="animate-fade-in-up space-y-8 pb-10">
         
-        <UrgentAlerts 
-            liveRequests={liveRequests} 
-            pendingPayments={pendingPayments} 
-            onRequestAction={handleRequestAction} 
-            onMarkPaid={handleMarkPaid} 
+        {/* 1. Setup Warnings */}
+        <SetupWarnings 
+            hasProfile={profileCompleted} 
+            tableCount={tables.length} 
+            menuCount={menuCount} 
+            onNavigate={onViewChange} 
         />
 
+        {/* 2. Critical Actions Row */}
+        {(liveRequests.length > 0 || pendingPayments.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {liveRequests.length > 0 && (
+                    <WalkInRequests 
+                        requests={liveRequests} 
+                        onAction={handleRequestAction} 
+                    />
+                )}
+                {pendingPayments.length > 0 && (
+                    <BillRequests 
+                        pendingPayments={pendingPayments} 
+                        onMarkPaid={handleMarkPaid} 
+                    />
+                )}
+            </div>
+        )}
+
+        {/* 3. Live Interactive Kitchen */}
+        <InteractiveKitchen 
+            activeItems={activeKitchenItems} 
+            onViewBoard={() => onViewChange('orders')}
+            onUpdateStatus={handleKitchenStatusUpdate}
+        />
+
+        {/* 4. Quick Table Overview */}
         <TableStatusGrid 
             tables={tables} 
             onToggleStatus={toggleTableStatus} 
-        />
-
-        <KitchenPreview 
-            activeItems={activeItems} 
-            onViewBoard={() => onViewChange('orders')} 
         />
         
       </div>

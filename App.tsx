@@ -39,12 +39,21 @@ const App: React.FC = () => {
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             const userData = docSnap.data() as UserProfile;
+            
+            // SECURITY CHECK: If staff is blocked, force logout
+            if (userData.role === UserRole.STAFF && userData.isStaffBlocked) {
+                await signOut(auth);
+                alert("Your access has been revoked by the restaurant administrator.");
+                return;
+            }
+
             setCurrentUser(userData);
             
             // Redirect based on role if at root
             if (location.pathname === '/') {
                 if (userData.role === UserRole.RESTAURANT) navigate('/dashboard');
                 if (userData.role === UserRole.ADMIN) navigate('/admin');
+                // Note: Staff stays on home page but sees "Go to Dashboard" button in header
             }
           } else {
              // Basic fallback
@@ -68,7 +77,7 @@ const App: React.FC = () => {
 
   // Listen for Active Reservations
   useEffect(() => {
-    if (!currentUser || currentUser.role !== UserRole.CUSTOMER) {
+    if (!currentUser || (currentUser.role !== UserRole.CUSTOMER && currentUser.role !== UserRole.STAFF)) {
       setActiveReservation(null);
       return;
     }
@@ -106,6 +115,7 @@ const App: React.FC = () => {
     setCurrentUser(user);
     if (user.role === UserRole.RESTAURANT) navigate('/dashboard');
     if (user.role === UserRole.ADMIN) navigate('/admin');
+    // Staff acts like user but gets dashboard access
   };
 
   const handleLogout = async () => {
@@ -198,9 +208,9 @@ const App: React.FC = () => {
           <Route 
             path="/dashboard" 
             element={
-              currentUser?.role === UserRole.RESTAURANT 
+              (currentUser?.role === UserRole.RESTAURANT || currentUser?.role === UserRole.STAFF)
                 ? <RestaurantDashboard user={currentUser} onLogout={handleLogout} />
-                : <div className="p-10 text-center">Unauthorized access. Please log in as a restaurant partner.</div>
+                : <div className="p-10 text-center">Unauthorized access.</div>
             } 
           />
 

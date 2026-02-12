@@ -1,16 +1,22 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Download, X } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { useToast } from '../../context/ToastContext';
 import { PHOTOGRAPHY_STYLES } from './AIPhotography/constants';
+import { incrementAIUsage } from '../../services/subscriptionService';
+import { getRestaurantProfile } from '../../services/restaurantService';
 
 // Child Components
 import { SourceImage } from './AIPhotography/SourceImage';
 import { StyleConfig } from './AIPhotography/StyleConfig';
 import { GeneratedResult } from './AIPhotography/GeneratedResult';
 
-export const AIPhotography: React.FC = () => {
+interface AIPhotographyProps {
+    userId?: string;
+}
+
+export const AIPhotography: React.FC<AIPhotographyProps> = ({ userId }) => {
   const { showToast } = useToast();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
@@ -22,6 +28,17 @@ export const AIPhotography: React.FC = () => {
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
 
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [remainingCredits, setRemainingCredits] = useState<number | null>(null);
+
+  useEffect(() => {
+      if (userId) {
+          getRestaurantProfile(userId).then(p => {
+              if (p?.subscription) {
+                  setRemainingCredits(Math.max(0, p.subscription.aiPhotosLimit - p.subscription.aiPhotosUsed));
+              }
+          });
+      }
+  }, [userId]);
 
   // Helper to get base64
   const getBase64 = (file: File): Promise<string> => {
@@ -43,6 +60,10 @@ export const AIPhotography: React.FC = () => {
 
   const handleGenerate = async () => {
     if (!imageFile || !selectedStyleId) return;
+    if (remainingCredits !== null && remainingCredits <= 0) {
+        showToast("You have reached your AI photo limit. Please upgrade your plan.", "error");
+        return;
+    }
 
     setIsGenerating(true);
 
@@ -74,7 +95,6 @@ export const AIPhotography: React.FC = () => {
 
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
-      // Using gemini-2.5-flash-image for standard generation
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: {
@@ -86,7 +106,6 @@ export const AIPhotography: React.FC = () => {
         config: {
           imageConfig: {
             aspectRatio: "4:3"
-            // imageSize is NOT supported in gemini-2.5-flash-image
           }
         }
       });
@@ -100,6 +119,12 @@ export const AIPhotography: React.FC = () => {
             setGeneratedImage(newBase64);
             foundImage = true;
             showToast("Photo generated successfully!", "success");
+            
+            // Decrement credit if successful and userId exists
+            if (userId) {
+                const success = await incrementAIUsage(userId);
+                if (success && remainingCredits !== null) setRemainingCredits(remainingCredits - 1);
+            }
             break;
           }
         }
@@ -130,9 +155,16 @@ export const AIPhotography: React.FC = () => {
 
   return (
     <div className="animate-fade-in-up pb-10">
-      <div className="mb-8">
-         <h2 className="text-2xl font-bold text-gray-900">AI Food Photography Studio</h2>
-         <p className="text-gray-500">Transform raw dish photos into professional editorial masterpieces.</p>
+      <div className="mb-8 flex justify-between items-end">
+         <div>
+            <h2 className="text-2xl font-bold text-gray-900">AI Food Photography Studio</h2>
+            <p className="text-gray-500">Transform raw dish photos into professional editorial masterpieces.</p>
+         </div>
+         {remainingCredits !== null && (
+             <div className="bg-primary-50 px-4 py-2 rounded-xl text-primary-700 font-bold border border-primary-100">
+                 {remainingCredits} Credits Remaining
+             </div>
+         )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -153,7 +185,7 @@ export const AIPhotography: React.FC = () => {
              setSelectedStyleId={setSelectedStyleId}
              isGenerating={isGenerating}
              onGenerate={handleGenerate}
-             disabled={!imageFile || !selectedStyleId}
+             disabled={!imageFile || !selectedStyleId || (remainingCredits !== null && remainingCredits <= 0)}
            />
         </div>
 

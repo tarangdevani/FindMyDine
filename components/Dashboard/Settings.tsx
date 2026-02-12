@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { FoodCategory, FoodAddOn, BillingConfig, PayoutConfig } from '../../types';
+import { FoodCategory, FoodAddOn, BillingConfig, PayoutConfig, UserRole } from '../../types';
 import { getCategories, getGlobalAddOns } from '../../services/menuService';
 import { getRestaurantProfile } from '../../services/restaurantService';
 import { CategorySettings } from './Settings/CategorySettings';
@@ -10,14 +10,18 @@ import { PayoutSettings } from './Settings/PayoutSettings';
 
 interface SettingsProps {
   userId: string;
+  currentUserRole?: UserRole;
 }
 
-export const Settings: React.FC<SettingsProps> = ({ userId }) => {
+export const Settings: React.FC<SettingsProps> = ({ userId, currentUserRole }) => {
   const [categories, setCategories] = useState<FoodCategory[]>([]);
   const [addOns, setAddOns] = useState<FoodAddOn[]>([]);
   const [billingConfig, setBillingConfig] = useState<BillingConfig | undefined>(undefined);
   const [payoutConfig, setPayoutConfig] = useState<PayoutConfig | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Staff should not see payout or sensitive billing configs
+  const isStaff = currentUserRole === UserRole.STAFF;
 
   useEffect(() => {
     fetchData();
@@ -64,15 +68,20 @@ export const Settings: React.FC<SettingsProps> = ({ userId }) => {
         isLoading={isLoading} 
       />
 
-      <BillingSettings 
-        userId={userId} 
-        initialConfig={billingConfig}
-      />
+      {/* Hide sensitive settings from Staff */}
+      {!isStaff && (
+        <>
+          <BillingSettings 
+            userId={userId} 
+            initialConfig={billingConfig}
+          />
 
-      <PayoutSettings 
-        userId={userId} 
-        initialConfig={payoutConfig}
-      />
+          <PayoutSettings 
+            userId={userId} 
+            initialConfig={payoutConfig}
+          />
+        </>
+      )}
     </div>
   );
 };

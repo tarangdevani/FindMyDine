@@ -30,8 +30,8 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
   // --- State ---
   
   // Search & Filter
-  const [searchTerm, setSearchTerm] = useState(''); // The effective search term for filtering
-  const [searchInputValue, setSearchInputValue] = useState(''); // The input value
+  const [searchTerm, setSearchTerm] = useState(''); 
+  const [searchInputValue, setSearchInputValue] = useState(''); 
   const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const [sortOption, setSortOption] = useState<'recommended' | 'rating' | 'distance'>('recommended');
@@ -55,7 +55,7 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
   const sortRef = useRef<HTMLDivElement>(null);
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
 
-  // Debounce Refs to prevent loops on selection
+  // Debounce Refs
   const isTypingSearch = useRef(false);
   const isTypingLocation = useRef(false);
 
@@ -80,7 +80,6 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
   };
 
   // --- Location Logic ---
-
   const handleDetectLocation = (showErrorAlert = true) => {
     if (!navigator.geolocation) return;
 
@@ -99,7 +98,6 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
             address: city
           };
           
-          // Update state without triggering debounce fetch
           isTypingLocation.current = false;
           setUserLocation(newLoc);
           setLocationQuery(city);
@@ -142,7 +140,7 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
       } catch (error) {
         console.error("Location autocomplete failed", error);
       }
-    }, 500); // 500ms debounce
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [locationQuery]);
@@ -152,7 +150,7 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
     setUserLocation({
       lat: parseFloat(item.lat),
       lng: parseFloat(item.lon),
-      address: item.display_name.split(',')[0] // Just take the main name
+      address: item.display_name.split(',')[0] 
     });
     setLocationQuery(item.display_name.split(',')[0]);
     setLocationSuggestions([]);
@@ -161,16 +159,13 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
   };
 
   // --- Search Logic ---
-
   const handleSearchChange = (val: string) => {
     isTypingSearch.current = true;
     setSearchInputValue(val);
   };
 
-  // Debounce Search Suggestions & Filtering
   useEffect(() => {
     const timer = setTimeout(() => {
-      // Always update the effective search term after delay
       setSearchTerm(searchInputValue);
 
       if (!isTypingSearch.current) return;
@@ -181,7 +176,6 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
         return;
       }
 
-      // Generate suggestions based on Name and Cuisine
       const lowerTerm = searchInputValue.toLowerCase();
       const suggestions = new Set<string>();
       
@@ -192,7 +186,7 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
 
       setSearchSuggestions(Array.from(suggestions).slice(0, 5));
       setShowSearchSuggestions(true);
-    }, 300); // 300ms debounce for local search is snappy enough
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [searchInputValue, restaurants]);
@@ -204,12 +198,6 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
     setShowSearchSuggestions(false);
   };
   
-  const handleQuickFilter = (tag: string) => {
-    isTypingSearch.current = false;
-    setSearchInputValue(tag);
-    setSearchTerm(tag);
-  };
-
   const clearFilters = () => {
     isTypingSearch.current = false;
     isTypingLocation.current = false;
@@ -220,9 +208,15 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
 
   // --- Filtering & Sorting Effect ---
   useEffect(() => {
-    let updated = [...restaurants];
+    // 1. Pre-filter: Only show restaurants that are active AND have a paid plan (Base/Pro/Ultra)
+    // Free plan restaurants are hidden from public view
+    let updated = restaurants.filter(r => {
+       const hasPaidPlan = r.subscriptionPlan && r.subscriptionPlan !== 'free';
+       // We can check isVerified as well if desired
+       return r.isOpen && hasPaidPlan; 
+    });
 
-    // Filter
+    // 2. Filter by Search
     if (searchTerm) {
       const lowerTerm = searchTerm.toLowerCase();
       updated = updated.filter(r => 
@@ -231,7 +225,7 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
       );
     }
 
-    // Distance Calculation
+    // 3. Distance Calc
     if (userLocation) {
       updated = updated.map(r => {
         if (r.lat && r.lng) {
@@ -242,7 +236,7 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
       });
     }
 
-    // Sort
+    // 4. Sort
     if (sortOption === 'rating') {
       updated.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     } else if (sortOption === 'distance' && userLocation) {
@@ -250,7 +244,7 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
     }
 
     setProcessedRestaurants(updated);
-    setPage(1); // Reset page on filter change
+    setPage(1); 
     setVisibleRestaurants(updated.slice(0, ITEMS_PER_PAGE));
   }, [restaurants, searchTerm, userLocation, sortOption]);
 
@@ -301,7 +295,6 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
   return (
     <>
       <header className="relative bg-white pt-24 pb-8 md:pt-32 md:pb-16 z-30">
-        {/* Background Blobs Container - Overflow hidden to prevent horizontal scroll */}
         <div className="absolute inset-0 overflow-hidden -z-10 pointer-events-none">
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary-50 rounded-full blur-3xl opacity-60 translate-x-1/3 -translate-y-1/3"></div>
             <div className="absolute top-20 left-0 w-48 h-48 bg-blue-50 rounded-full blur-2xl opacity-50 -translate-x-1/2"></div>
@@ -318,7 +311,6 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
             </p>
           </div>
 
-          {/* Combined Search Bar Container */}
           <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-soft-lg border border-gray-100 p-2 flex flex-col md:flex-row gap-2 relative">
             
             {/* Location Input */}
@@ -339,7 +331,6 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
                   {isLocating && <Loader2 size={16} className="animate-spin text-primary-500 ml-2" />}
                </div>
 
-               {/* Location Suggestions Dropdown */}
                {showLocationSuggestions && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden animate-scale-in">
                      <button 
@@ -383,7 +374,6 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
                   </div>
                </div>
 
-               {/* Search Suggestions Dropdown */}
                {showSearchSuggestions && searchSuggestions.length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden animate-scale-in">
                      {searchSuggestions.map((term, index) => (
@@ -400,7 +390,6 @@ export const HomePage: React.FC<HomePageProps> = ({ restaurants, isLoading, curr
                )}
             </div>
             
-            {/* Search Button */}
             <button className="bg-gray-900 hover:bg-black text-white rounded-xl px-6 py-3 md:py-0 font-bold shadow-lg shadow-gray-900/20 transition-all flex items-center justify-center gap-2">
                Search
             </button>

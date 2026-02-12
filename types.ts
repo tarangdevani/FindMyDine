@@ -2,10 +2,23 @@
 export enum UserRole {
   CUSTOMER = 'customer',
   RESTAURANT = 'restaurant',
-  ADMIN = 'admin'
+  ADMIN = 'admin',
+  STAFF = 'staff'
 }
 
 export type ReservationStatus = 'pending' | 'confirmed' | 'declined' | 'cancelled' | 'active' | 'completed';
+
+export type SubscriptionPlan = 'free' | 'base' | 'pro' | 'ultra';
+
+export interface SubscriptionDetails {
+  plan: SubscriptionPlan;
+  startDate: string;
+  expiryDate: string; // ISO String
+  isValid: boolean;
+  aiPhotosLimit: number;
+  aiPhotosUsed: number;
+  autoRenew: boolean;
+}
 
 export interface BillingConfig {
   serviceChargeRate: number;
@@ -87,6 +100,8 @@ export interface Transaction {
     itemsSummary?: string; // e.g. "2x Burger, 1x Coke"
     refundAmount?: number;
     bankDetails?: string; // For withdrawals
+    subscriptionPlan?: string;
+    subscriptionDuration?: string;
   };
 }
 
@@ -95,6 +110,20 @@ export interface WalletStats {
   pendingBalance: number;
   totalEarnings: number;
   lastPayout?: string;
+}
+
+export interface DailyStat {
+  id?: string;
+  date: string; // YYYY-MM-DD
+  restaurantId: string;
+  totalRevenue: number;
+  orderCount: number;
+  reservationCount: number;
+  averageOrderValue: number;
+  // Specific Breakdowns
+  diningRevenue: number;
+  reservationRevenue: number;
+  createdAt: string;
 }
 
 export type OrderStatus = 'ordered' | 'preparing' | 'served' | 'paid' | 'cancelled';
@@ -218,6 +247,13 @@ export interface UserProfile {
   };
   isActive?: boolean; // For Ban/Suspend logic
   isVerified?: boolean; // For Restaurant Verification
+  createdAt?: string;
+  
+  // Staff Specific Fields
+  employerId?: string; // The Restaurant ID they work for
+  permissions?: string[]; // Array of DashboardView IDs they can access
+  isStaffBlocked?: boolean; // If blocked by restaurant owner
+  invitationStatus?: 'pending' | 'accepted'; // For new invites
 }
 
 export interface RestaurantProfile extends UserProfile {
@@ -235,6 +271,7 @@ export interface RestaurantProfile extends UserProfile {
   billingConfig?: BillingConfig;
   payoutConfig?: PayoutConfig; // New Payout Settings
   bankInfoConfigured?: boolean; // Track if payout info is set
+  subscription?: SubscriptionDetails; // NEW
 }
 
 export interface RestaurantData {
@@ -256,6 +293,7 @@ export interface RestaurantData {
   reservationConfig?: ReservationConfig;
   billingConfig?: BillingConfig;
   isVerified?: boolean; // Added for Admin flow
+  subscriptionPlan?: SubscriptionPlan; // NEW for filtering
 }
 
 export interface FoodCategory {
