@@ -42,7 +42,8 @@ export const BillView: React.FC<BillViewProps> = ({
   const totalDiscount = offerDiscount + couponDiscount;
   const netAmount = Math.max(0, rawGrandTotal - totalDiscount);
   
-  const platformFee = paymentMethod === 'online' ? netAmount * 0.02 : 0;
+  // Platform Fee changed to 3%
+  const platformFee = paymentMethod === 'online' ? netAmount * 0.03 : 0;
   
   const finalTotal = netAmount + platformFee;
 
@@ -144,7 +145,7 @@ export const BillView: React.FC<BillViewProps> = ({
                 {/* Platform Fee */}
                 {paymentMethod === 'online' && (
                     <div className="flex justify-between text-sm text-gray-600">
-                        <span>Platform Fee (2%)</span>
+                        <span>Payment sattlement & Platform Fee (3%)</span>
                         <span className="font-medium">+ ${platformFee.toFixed(2)}</span>
                     </div>
                 )}

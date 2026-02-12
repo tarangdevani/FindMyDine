@@ -4,6 +4,7 @@ import { XCircle, Tag, Gift, ListFilter, FileText, Percent, AlertCircle } from '
 import { Button } from '../../UI/Button';
 import { Offer, MenuItem } from '../../../types';
 import { Checkbox } from '../../UI/Checkbox';
+import { useToast } from '../../../context/ToastContext';
 
 interface OfferFormModalProps {
   isOpen: boolean;
@@ -19,6 +20,8 @@ interface OfferFormModalProps {
 export const OfferFormModal: React.FC<OfferFormModalProps> = ({
   isOpen, onClose, onSubmit, formData, setFormData, isSaving, isEditing, menuItems
 }) => {
+  const { showToast } = useToast();
+
   if (!isOpen) return null;
 
   const appendTerm = (text: string) => {
@@ -26,6 +29,53 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
       ...prev,
       termsAndConditions: prev.termsAndConditions ? prev.termsAndConditions + '\n- ' + text : '- ' + text
     }));
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+
+      // VALIDATION
+      if (!formData.title?.trim()) {
+          showToast("Offer title is required.", "error");
+          return;
+      }
+
+      if (formData.type === 'coupon' && !formData.code?.trim()) {
+          showToast("Coupon code is required.", "error");
+          return;
+      }
+
+      // Date Logic
+      if (formData.validFrom && formData.validUntil) {
+          if (new Date(formData.validUntil) < new Date(formData.validFrom)) {
+              showToast("Expiration date cannot be before start date.", "error");
+              return;
+          }
+      }
+
+      // Discount Logic
+      if (formData.rewardType === 'discount') {
+          if ((formData.discountValue || 0) <= 0) {
+              showToast("Discount value must be greater than 0.", "error");
+              return;
+          }
+          if (formData.discountType === 'percentage' && (formData.discountValue || 0) > 100) {
+              showToast("Percentage discount cannot exceed 100%.", "error");
+              return;
+          }
+      }
+
+      if (formData.rewardType === 'free_item' && !formData.freeItemId) {
+          showToast("Please select the free item to be gifted.", "error");
+          return;
+      }
+
+      // Negative checks
+      if ((formData.minSpend || 0) < 0) { showToast("Min spend cannot be negative.", "error"); return; }
+      if ((formData.maxUsage || 0) < 0) { showToast("Usage limit cannot be negative.", "error"); return; }
+      if ((formData.globalBudget || 0) < 0) { showToast("Budget cannot be negative.", "error"); return; }
+
+      onSubmit(e);
   };
 
   const generateTerms = () => {
@@ -278,11 +328,24 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
                 <div className="grid grid-cols-2 gap-4">
                    <div>
                       <label className="block text-xs font-bold text-gray-600 mb-1">Valid From</label>
-                      <input type="date" required className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm" value={formData.validFrom} onChange={(e) => setFormData({...formData, validFrom: e.target.value})} />
+                      <input 
+                        type="date" 
+                        required 
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm" 
+                        value={formData.validFrom} 
+                        onChange={(e) => setFormData({...formData, validFrom: e.target.value})} 
+                      />
                    </div>
                    <div>
                       <label className="block text-xs font-bold text-gray-600 mb-1">Valid Until</label>
-                      <input type="date" required className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm" value={formData.validUntil} onChange={(e) => setFormData({...formData, validUntil: e.target.value})} />
+                      <input 
+                        type="date" 
+                        required 
+                        min={formData.validFrom}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm" 
+                        value={formData.validUntil} 
+                        onChange={(e) => setFormData({...formData, validUntil: e.target.value})} 
+                      />
                    </div>
                 </div>
              </div>
@@ -318,7 +381,7 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
           {/* Footer */}
           <div className="p-6 border-t border-gray-100 bg-gray-50 flex gap-3 sticky bottom-0 shrink-0">
              <Button variant="ghost" fullWidth onClick={onClose}>Cancel</Button>
-             <Button fullWidth onClick={onSubmit} isLoading={isSaving}>Save {formData.type === 'coupon' ? 'Coupon' : 'Offer'}</Button>
+             <Button fullWidth onClick={handleFormSubmit} isLoading={isSaving}>Save {formData.type === 'coupon' ? 'Coupon' : 'Offer'}</Button>
           </div>
 
        </div>

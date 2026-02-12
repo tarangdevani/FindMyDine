@@ -11,15 +11,6 @@ export const getRestaurants = async (): Promise<RestaurantData[]> => {
     const q = query(collection(db, COLLECTION_NAME));
     const querySnapshot = await getDocs(q);
     
-    // If database is empty, seed it with mock data
-    if (querySnapshot.empty) {
-      console.log("Database empty. Seeding initial data...");
-      await seedDatabase();
-      // Fetch again after seeding
-      const newSnapshot = await getDocs(q);
-      return newSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RestaurantData));
-    }
-
     return querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -48,9 +39,10 @@ export const getRestaurantById = async (id: string): Promise<RestaurantData | nu
   }
 };
 
+// Seeding function removed to prevent auto-population
 const seedDatabase = async () => {
+  // kept for reference or manual admin usage if needed later, but not called automatically
   const promises = MOCK_RESTAURANTS.map(restaurant => {
-    // Remove the hardcoded ID so Firestore generates a unique one
     const { id, ...data } = restaurant; 
     return addDoc(collection(db, COLLECTION_NAME), data);
   });
@@ -107,10 +99,6 @@ export const updateRestaurantProfile = async (uid: string, data: Partial<Restaur
     if (Object.keys(publicData).length > 0) {
         // Ensure isOpen is set on creation, but don't overwrite if not passed
         // Since we are merging, existing fields are preserved.
-        // If this is a brand new doc (creation), we might want default isOpen=true.
-        // But we can't easily check existence efficiently inside this flow without an extra read.
-        // We assume 'isOpen' is managed via a separate status toggle or init.
-        // If needed, we could set publicData.isOpen = true if it's a critical new creation field.
         
         await setDoc(publicRestaurantRef, publicData, { merge: true });
     }

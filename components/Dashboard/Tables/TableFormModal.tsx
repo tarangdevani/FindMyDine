@@ -3,6 +3,7 @@ import React, { useRef, useState } from 'react';
 import { X, Square, Circle, PenTool, Plus, ChevronDown } from 'lucide-react';
 import { Button } from '../../UI/Button';
 import { TableItem, Point } from '../../../types';
+import { useToast } from '../../../context/ToastContext';
 
 interface TableFormModalProps {
   isOpen: boolean;
@@ -31,6 +32,7 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
   chairs, isSaving, error,
   GRID_PIXELS, getChairRotation
 }) => {
+  const { showToast } = useToast();
   if (!isOpen) return null;
 
   const [isAreaDropdownOpen, setIsAreaDropdownOpen] = useState(false);
@@ -52,6 +54,33 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
     setFormData({ ...formData, points: newPoints });
   };
 
+  const handleFormSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      // Validations
+      if (!formData.name?.trim()) {
+          showToast("Table name is required.", "error");
+          return;
+      }
+      if (!formData.area?.trim()) {
+          showToast("Area is required.", "error");
+          return;
+      }
+      if (formData.seats <= 0) {
+          showToast("Seats must be at least 1.", "error");
+          return;
+      }
+      if ((formData.width || 0) <= 0 || (formData.height || 0) <= 0) {
+          showToast("Dimensions must be positive.", "error");
+          return;
+      }
+      if (formData.shape === 'custom' && customPoints.length < 3) {
+          showToast("Custom shapes need at least 3 points.", "error");
+          return;
+      }
+
+      onSubmit(e);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
        <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onClick={onClose}></div>
@@ -64,16 +93,16 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
                 <button onClick={onClose} className="md:hidden p-2"><X size={20}/></button>
              </div>
              
-             <form id="tableForm" onSubmit={onSubmit} className="space-y-5">
+             <form id="tableForm" onSubmit={handleFormSubmit} className="space-y-5">
                 {error && <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-red-600 text-xs font-medium">{error}</div>}
                 
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Name</label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Name <span className="text-red-500">*</span></label>
                     <input type="text" required className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-primary-500 outline-none bg-white text-gray-900" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
                 </div>
                 
                 <div className="relative" ref={areaDropdownRef}>
-                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Area</label>
+                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Area <span className="text-red-500">*</span></label>
                    <div className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white flex items-center justify-between cursor-pointer" onClick={() => setIsAreaDropdownOpen(!isAreaDropdownOpen)}>
                      <input type="text" className="flex-1 outline-none bg-transparent cursor-pointer text-gray-900" placeholder="Search or add area..." value={areaSearch} onChange={(e) => { setAreaSearch(e.target.value); setIsAreaDropdownOpen(true); }} />
                      <ChevronDown size={16} className="text-gray-400" />

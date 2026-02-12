@@ -36,21 +36,27 @@ export const BillPreview: React.FC<BillPreviewProps> = ({ order, reservation, bi
       // Live Calculation (Legacy orders or live sessions)
       const calculation = calculateBill(order.items, billingConfig, order.customDiscount);
       
-      // Attempt to calculate discount if appliedOfferId exists but no snapshot
+      // Calculate Total Discount: Manual + Offer
       let totalDiscount = calculation.customDiscountAmount;
       let discountDesc = order.customDiscount ? 'Manual Adjustment' : '';
       
+      // If discount was applied during request, add it here
       if (order.appliedDiscountAmount) {
           totalDiscount += order.appliedDiscountAmount;
           discountDesc = discountDesc ? `${discountDesc}, Offer Applied` : 'Offer Applied';
       }
+
+      // Grand Total Calculation:
+      // calculateBill.grandTotal already subtracts manual discount. 
+      // We must subtract the offer discount (appliedDiscountAmount) as well.
+      const liveGrandTotal = Math.max(0, calculation.grandTotal - (order.appliedDiscountAmount || 0));
 
       displayDetails = {
           menuSubtotal: calculation.menuSubtotal,
           serviceChargeAmount: calculation.serviceChargeAmount,
           taxAmount: calculation.taxAmount,
           totalDiscount: totalDiscount,
-          grandTotal: Math.max(0, calculation.grandTotal - (order.appliedDiscountAmount || 0)),
+          grandTotal: liveGrandTotal,
           activeItems: calculation.activeItems,
           discountDesc
       };
@@ -58,7 +64,7 @@ export const BillPreview: React.FC<BillPreviewProps> = ({ order, reservation, bi
 
   // Platform fee logic (visual only if online)
   const isOnline = reservation?.paymentMethod === 'online';
-  const platformFee = isOnline ? displayDetails.grandTotal * 0.02 : 0;
+  const platformFee = isOnline ? displayDetails.grandTotal * 0.03 : 0; // 3% fee visual
   const finalTotal = displayDetails.grandTotal + platformFee;
 
   const handlePrint = () => {
@@ -256,7 +262,7 @@ export const BillPreview: React.FC<BillPreviewProps> = ({ order, reservation, bi
 
                    {isOnline && (
                      <div className="row flex justify-between text-gray-500 italic">
-                        <span>Platform Fee (2%)</span>
+                        <span>Platform Fee (3%)</span>
                         <span>${platformFee.toFixed(2)}</span>
                      </div>
                    )}

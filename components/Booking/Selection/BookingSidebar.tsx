@@ -5,6 +5,7 @@ import { Button } from '../../UI/Button';
 import { TableItem } from '../../../types';
 import { BookingInputs } from './BookingInputs';
 import { BookingAction } from './BookingAction';
+import { useToast } from '../../../context/ToastContext';
 
 interface BookingSidebarProps {
   isReservationMode: boolean;
@@ -28,6 +29,63 @@ export const BookingSidebar: React.FC<BookingSidebarProps> = ({
   guests, setGuests,
   selectedTable, reservationFee, isBooking, onConfirmBooking, minDate
 }) => {
+  const { showToast } = useToast();
+
+  const validateAndConfirm = (paymentData?: any) => {
+    // 1. Parse Dates
+    const today = new Date();
+    const selectedDate = new Date(date);
+    
+    // Reset hours to compare just dates
+    const todayStr = today.toISOString().split('T')[0];
+    const selectedStr = date;
+
+    // 2. Validate Time Range
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+
+    if (endMinutes <= startMinutes) {
+        showToast("End time must be after start time.", "error");
+        return;
+    }
+
+    // 3. Validate Past Time (if today)
+    if (selectedStr === todayStr) {
+        const currentMinutes = today.getHours() * 60 + today.getMinutes();
+        // Buffer of 15 mins for booking processing
+        if (startMinutes < currentMinutes + 15) {
+            showToast("Cannot book a time in the past. Please select a future time.", "error");
+            return;
+        }
+    }
+
+    // 4. Validate Duration (e.g., max 4 hours, min 30 mins)
+    const duration = endMinutes - startMinutes;
+    if (duration < 30) {
+        showToast("Minimum reservation duration is 30 minutes.", "warning");
+        return;
+    }
+    if (duration > 240) {
+        showToast("Maximum reservation duration is 4 hours.", "warning");
+        return;
+    }
+
+    // 5. Validate Guests
+    if (guests <= 0) {
+        showToast("Guest count must be at least 1.", "error");
+        return;
+    }
+    if (selectedTable && guests > selectedTable.seats + 2) {
+        // Allow slight overcrowding but warn? Or strictly block. Let's block for safety.
+        showToast(`This table only seats ${selectedTable.seats} people.`, "warning");
+        return;
+    }
+
+    onConfirmBooking(paymentData);
+  };
   
   if (!isReservationMode) {
     return (
@@ -73,7 +131,7 @@ export const BookingSidebar: React.FC<BookingSidebarProps> = ({
             selectedTable={selectedTable}
             reservationFee={reservationFee}
             isBooking={isBooking}
-            onConfirmBooking={onConfirmBooking}
+            onConfirmBooking={validateAndConfirm}
         />
     </div>
   );

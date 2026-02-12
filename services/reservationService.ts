@@ -3,25 +3,36 @@ import { collection, addDoc, query, where, getDocs, updateDoc, doc, orderBy, wri
 import { db } from "../lib/firebase";
 import { Reservation, ReservationStatus } from "../types";
 import { calculateReservationRevenue } from "../utils/billing";
-import { recordTransaction, completeTransactionByReference } from "./walletService";
+import { recordTransaction, completeTransactionByReference, cancelTransactionByReference } from "./walletService";
 
 const COLLECTION_NAME = "reservations";
 
+// Helper to deeply remove undefined values
+const deepClean = <T>(obj: T): T => {
+  return JSON.parse(JSON.stringify(obj));
+};
+
 export const createReservation = async (reservation: Reservation): Promise<string | null> => {
   try {
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), reservation);
+    const resWithCurrency = {
+      ...reservation,
+      currency: 'USD'
+    };
+
+    // Deep clean removes undefined values from nested objects (like revenueSplit or metadata)
+    const cleanData = deepClean(resWithCurrency);
+
+    const docRef = await addDoc(collection(db, COLLECTION_NAME), cleanData);
     
     // RECORD TRANSACTION
-    // If there was a payment, record it as pending
     if (reservation.amountPaid && reservation.amountPaid > 0) {
-        // Calculate the net revenue (80%) for the restaurant
-        const split = calculateReservationRevenue(reservation.amountPaid, 'completed'); // Projected revenue
+        const split = calculateReservationRevenue(reservation.amountPaid, 'completed');
         
         await recordTransaction({
             restaurantId: reservation.restaurantId,
             type: 'reservation',
             amount: split.restaurant,
-            status: 'pending', // Pending until reservation completed
+            status: 'pending', 
             createdAt: new Date().toISOString(),
             description: `Reservation Fee - ${reservation.tableName}`,
             reservationId: docRef.id,
@@ -73,14 +84,12 @@ export const getReservationsByUser = async (userId: string): Promise<Reservation
 export const updateReservationStatus = async (
     reservationId: string, 
     status: ReservationStatus, 
-    refundConfig?: number // Pass refund percentage if cancelling
+    refundConfig?: number
 ): Promise<boolean> => {
   try {
     const ref = doc(db, COLLECTION_NAME, reservationId);
-    
     const updateData: any = { status };
 
-    // Calculate revenue split if cancelling/declining and money was paid
     if ((status === 'cancelled' || status === 'declined')) {
         const snap = await getDoc(ref);
         if (snap.exists()) {
@@ -88,35 +97,34 @@ export const updateReservationStatus = async (
             if (res.amountPaid && res.amountPaid > 0) {
                 const refundPercent = refundConfig !== undefined ? refundConfig : 0;
                 const split = calculateReservationRevenue(res.amountPaid, 'cancelled', refundPercent);
-                updateData.revenueSplit = split;
-                updateData.paymentStatus = 'refunded'; // Mark as refunded/processed
-
-                // RECORD TRANSACTION: Cancellation Adjustment
-                // We need to see if there was a pending transaction. 
-                // In a real app, we'd cancel the pending one or create a new negative one.
-                // Here, we'll create a 'cancellation' transaction that reflects the FINAL restaurant share (if any)
-                // or ensures the pending income is voided.
-                // Simplified: Record the net outcome. 
                 
-                await recordTransaction({
-                    restaurantId: res.restaurantId,
-                    type: 'cancellation',
-                    amount: split.restaurant, // This is what the restaurant keeps (usually small or 0)
-                    status: 'completed',
-                    createdAt: new Date().toISOString(),
-                    description: `Cancelled Reservation - ${res.tableName}`,
-                    reservationId: reservationId,
-                    metadata: {
-                        customerName: res.userName,
-                        refundAmount: split.userRefund,
-                        platformFee: split.platform
-                    }
-                });
+                updateData.revenueSplit = split;
+                updateData.paymentStatus = 'refunded'; 
+
+                await cancelTransactionByReference(reservationId);
+
+                if (split.restaurant > 0) {
+                    await recordTransaction({
+                        restaurantId: res.restaurantId,
+                        type: 'cancellation',
+                        amount: split.restaurant, 
+                        status: 'completed',
+                        createdAt: new Date().toISOString(),
+                        description: `Cancellation Fee - ${res.tableName}`,
+                        reservationId: reservationId,
+                        metadata: {
+                            customerName: res.userName,
+                            refundAmount: split.userRefund,
+                            platformFee: split.platform
+                        }
+                    });
+                }
             }
         }
     }
 
-    await updateDoc(ref, updateData);
+    // Ensure update data is clean
+    await updateDoc(ref, deepClean(updateData));
     return true;
   } catch (error) {
     console.error("Error updating reservation status:", error);
@@ -124,14 +132,10 @@ export const updateReservationStatus = async (
   }
 };
 
-/**
- * Atomically marks a reservation as completed and frees the table.
- */
 export const completeReservation = async (reservationId: string, restaurantId: string, tableId: string, extraData: any = {}): Promise<boolean> => {
   try {
     const batch = writeBatch(db);
     
-    // 1. Fetch Reservation to calculate revenue split
     const resRef = doc(db, COLLECTION_NAME, reservationId);
     const resSnap = await getDoc(resRef);
     let revenueSplit = undefined;
@@ -143,21 +147,19 @@ export const completeReservation = async (reservationId: string, restaurantId: s
         }
     }
 
-    // 2. Update Reservation Status
+    const cleanExtraData = deepClean(extraData);
+
     batch.update(resRef, { 
       status: 'completed',
       paymentStatus: 'paid',
       ...(revenueSplit && { revenueSplit }),
-      ...extraData 
+      ...cleanExtraData 
     });
 
-    // 3. Update Table Status to Available
     const tableRef = doc(db, "users", restaurantId, "tables", tableId);
     batch.update(tableRef, { status: 'available' });
 
     await batch.commit();
-
-    // 4. WALLET: Mark the pending reservation transaction as completed (Available for withdrawal)
     await completeTransactionByReference(reservationId);
 
     return true;
@@ -213,7 +215,6 @@ export const getOccupiedTableIds = async (
       
       const resStart = getDateFromTime(res.date, res.startTime);
       const resEnd = getDateFromTime(res.date, res.endTime);
-      
       const resStartBuffer = new Date(resStart.getTime() - 15 * 60000);
       
       if (reqStart < resEnd && reqEnd > resStartBuffer) {

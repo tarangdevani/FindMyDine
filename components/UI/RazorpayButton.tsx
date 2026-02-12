@@ -23,7 +23,7 @@ interface RazorpayButtonProps {
 
 export const RazorpayButton: React.FC<RazorpayButtonProps> = ({ 
   amount, 
-  currency = 'INR', 
+  currency = 'USD', // Changed to USD
   name = 'FindMyDine', 
   description = 'Payment', 
   image,
@@ -52,7 +52,7 @@ export const RazorpayButton: React.FC<RazorpayButtonProps> = ({
 
     const options = {
         key: keyToUse, 
-        amount: Math.round(amount * 100), // Amount is in smallest currency unit (e.g. paise)
+        amount: Math.round(amount * 100), // Amount is in smallest currency unit (cents for USD)
         currency: currency,
         name: name,
         description: description,

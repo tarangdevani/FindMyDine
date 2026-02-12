@@ -1,7 +1,8 @@
 
 export enum UserRole {
   CUSTOMER = 'customer',
-  RESTAURANT = 'restaurant'
+  RESTAURANT = 'restaurant',
+  ADMIN = 'admin'
 }
 
 export type ReservationStatus = 'pending' | 'confirmed' | 'declined' | 'cancelled' | 'active' | 'completed';
@@ -67,7 +68,7 @@ export type TransactionStatus = 'pending' | 'completed' | 'failed';
 
 export interface Transaction {
   id?: string;
-  restaurantId: string;
+  restaurantId: string; // OR 'platform' for admin specific logs
   type: TransactionType;
   amount: number; // Net amount to restaurant (Positive = Income, Negative = Outflow)
   status: TransactionStatus;
@@ -85,6 +86,7 @@ export interface Transaction {
     platformFee?: number;
     itemsSummary?: string; // e.g. "2x Burger, 1x Coke"
     refundAmount?: number;
+    bankDetails?: string; // For withdrawals
   };
 }
 
@@ -214,6 +216,8 @@ export interface UserProfile {
     lat: number;
     lng: number;
   };
+  isActive?: boolean; // For Ban/Suspend logic
+  isVerified?: boolean; // For Restaurant Verification
 }
 
 export interface RestaurantProfile extends UserProfile {
@@ -251,6 +255,7 @@ export interface RestaurantData {
   lng?: number;
   reservationConfig?: ReservationConfig;
   billingConfig?: BillingConfig;
+  isVerified?: boolean; // Added for Admin flow
 }
 
 export interface FoodCategory {

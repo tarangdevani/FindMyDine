@@ -51,9 +51,16 @@ export const getWalletStats = async (restaurantId: string): Promise<WalletStats>
       if (txn.status === 'completed') {
         availableBalance += txn.amount;
       } else if (txn.status === 'pending') {
-        // Only count positive pending amounts as "pending income"
+        // Only count positive pending amounts as "pending income" (like future reservations)
+        // Negative pending amounts (withdrawals) are deducted from available balance visually or handled separately
         if (txn.amount > 0) {
             pendingBalance += txn.amount;
+        } else {
+            // If it's a pending withdrawal, it shouldn't be counted in available balance anymore
+            // In a double-entry system we'd deduct immediately. Here, we calculate summation.
+            // Since we sum all 'completed', a pending withdrawal isn't subtracted yet.
+            // We should subtract pending withdrawals from "Available to Withdraw" visualization usually.
+            availableBalance += txn.amount; // txn.amount is negative for withdrawal
         }
       }
     });
@@ -105,13 +112,39 @@ export const completeTransactionByReference = async (referenceId: string): Promi
   }
 };
 
+// Helper to CANCEL/VOID a pending transaction (e.g. when reservation is cancelled)
+export const cancelTransactionByReference = async (referenceId: string): Promise<boolean> => {
+  try {
+    const q = query(
+        collection(db, COLLECTION_NAME),
+        where("reservationId", "==", referenceId),
+        where("status", "==", "pending")
+    );
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) return false;
+
+    const batch = writeBatch(db);
+    snapshot.docs.forEach(doc => {
+        // Mark as failed/cancelled so it is removed from pending balance calculation
+        batch.update(doc.ref, { status: 'failed', description: 'Voided - Reservation Cancelled' });
+    });
+    
+    await batch.commit();
+    return true;
+  } catch (error) {
+    console.error("Error cancelling transaction by reference:", error);
+    return false;
+  }
+};
+
 export const requestWithdrawal = async (restaurantId: string, amount: number): Promise<boolean> => {
     try {
         await recordTransaction({
             restaurantId,
             type: 'withdrawal',
             amount: -amount, // Negative for withdrawal
-            status: 'completed', // Assume instant for demo, or 'pending' if manual approval needed
+            status: 'pending', // PENDING for Admin Approval
             createdAt: new Date().toISOString(),
             description: 'Payout Request',
             metadata: {

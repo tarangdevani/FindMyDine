@@ -5,9 +5,10 @@ import { Header } from './components/Layout/Header';
 import { AuthModal } from './components/Auth/AuthModal';
 import { HomePage } from './components/Home/HomePage';
 import { RestaurantDashboard } from './components/Dashboard/RestaurantDashboard';
+import { AdminDashboard } from './components/Admin/AdminDashboard'; // New Import
 import { RestaurantDetailsPage } from './components/Restaurant/RestaurantDetailsPage';
 import { TableSelectionPage } from './components/Booking/TableSelectionPage';
-import { MyTablePage } from './components/Booking/MyTablePage'; // Import new page
+import { MyTablePage } from './components/Booking/MyTablePage'; 
 import { UserReservations } from './components/User/UserReservations';
 import { UserBookings } from './components/User/UserBookings';
 import { UserFavorites } from './components/User/UserFavorites';
@@ -37,7 +38,14 @@ const App: React.FC = () => {
           const docRef = doc(db, "users", user.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
-            setCurrentUser(docSnap.data() as UserProfile);
+            const userData = docSnap.data() as UserProfile;
+            setCurrentUser(userData);
+            
+            // Redirect based on role if at root
+            if (location.pathname === '/') {
+                if (userData.role === UserRole.RESTAURANT) navigate('/dashboard');
+                if (userData.role === UserRole.ADMIN) navigate('/admin');
+            }
           } else {
              // Basic fallback
              setCurrentUser({
@@ -60,12 +68,11 @@ const App: React.FC = () => {
 
   // Listen for Active Reservations
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser || currentUser.role !== UserRole.CUSTOMER) {
       setActiveReservation(null);
       return;
     }
 
-    // Query for any reservation with status 'active' for this user
     const q = query(
       collection(db, "reservations"),
       where("userId", "==", currentUser.uid),
@@ -74,7 +81,6 @@ const App: React.FC = () => {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
-        // Take the first active reservation
         const res = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Reservation;
         setActiveReservation(res);
       } else {
@@ -98,14 +104,15 @@ const App: React.FC = () => {
 
   const handleLoginSuccess = (user: UserProfile) => {
     setCurrentUser(user);
-    // User stays on the same page
+    if (user.role === UserRole.RESTAURANT) navigate('/dashboard');
+    if (user.role === UserRole.ADMIN) navigate('/admin');
   };
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
       setCurrentUser(null);
-      navigate('/'); // Redirect to home on logout
+      navigate('/'); 
     } catch (error) {
       console.error("Error signing out:", error);
     }
@@ -118,11 +125,9 @@ const App: React.FC = () => {
   };
 
   // Determine if we should show standard header/footer
-  const isDashboard = location.pathname === '/dashboard';
-  // Hide header on My Table Claim page to keep it minimal
+  const isDashboard = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin');
   const isClaimPage = location.pathname.includes('/claim');
   
-  // Check if we need to show the popup (Active reservation exists AND we are NOT on the claim page)
   const showActiveTablePopup = activeReservation && !location.pathname.includes(`/table/${activeReservation.tableId}/claim`);
 
   return (
@@ -135,8 +140,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Adjust padding based on route. Dashboard controls its own layout. */}
-      {/* Remove padding for details page to allow hero image full width/height impact */}
+      {/* Main Routes */}
       <main className={`flex-grow ${!isDashboard && !isClaimPage && !location.pathname.startsWith('/restaurant/') ? 'pt-20' : ''}`}>
         <Routes>
           <Route 
@@ -169,7 +173,6 @@ const App: React.FC = () => {
             } 
           />
           
-          {/* My Table / QR Code Route */}
           <Route 
             path="/restaurant/:restaurantId/table/:tableId/claim" 
             element={
@@ -180,15 +183,8 @@ const App: React.FC = () => {
             } 
           />
           
-          {/* User Routes */}
-          <Route 
-            path="/my-reservations" 
-            element={<UserReservations currentUser={currentUser} />} 
-          />
-          <Route 
-            path="/my-bookings" 
-            element={<UserBookings currentUser={currentUser} />} 
-          />
+          <Route path="/my-reservations" element={<UserReservations currentUser={currentUser} />} />
+          <Route path="/my-bookings" element={<UserBookings currentUser={currentUser} />} />
           <Route 
             path="/my-favorites" 
             element={
@@ -204,12 +200,17 @@ const App: React.FC = () => {
             element={
               currentUser?.role === UserRole.RESTAURANT 
                 ? <RestaurantDashboard user={currentUser} onLogout={handleLogout} />
-                : <HomePage 
-                    restaurants={restaurants} 
-                    isLoading={isLoading} 
-                    currentUser={currentUser}
-                    onLoginRequired={() => setIsAuthModalOpen(true)}
-                  /> 
+                : <div className="p-10 text-center">Unauthorized access. Please log in as a restaurant partner.</div>
+            } 
+          />
+
+          {/* ADMIN ROUTE */}
+          <Route 
+            path="/admin" 
+            element={
+              currentUser?.role === UserRole.ADMIN
+                ? <AdminDashboard user={currentUser} onLogout={handleLogout} />
+                : <div className="p-10 text-center">Access Denied. Admins Only.</div>
             } 
           />
         </Routes>

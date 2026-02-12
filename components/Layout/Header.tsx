@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { UtensilsCrossed, User, Menu, LayoutDashboard, Heart, Calendar, LogOut, AlertCircle, X, BookOpen } from 'lucide-react';
+import { User, Menu, LayoutDashboard, Heart, Calendar, LogOut, AlertCircle, X, BookOpen } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { UserProfile, UserRole } from '../../types';
 
@@ -37,7 +37,21 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, currentUser, onLog
             {/* Logo */}
             <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
               <div className="bg-primary-600 text-white p-2.5 rounded-xl shadow-lg shadow-primary-600/20 group-hover:scale-105 transition-transform duration-300">
-                <UtensilsCrossed size={22} strokeWidth={2.5} />
+                {/* Custom 'Scanned Fork' Logo Icon */}
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white">
+                  {/* Viewfinder Corners */}
+                  <path d="M4 7V5a1 1 0 0 1 1-1h2" />
+                  <path d="M17 4h2a1 1 0 0 1 1 1v2" />
+                  <path d="M20 17v2a1 1 0 0 1-1 1h-2" />
+                  <path d="M7 20H5a1 1 0 0 1-1-1v-2" />
+                  
+                  {/* The Fork */}
+                  <path d="M12 8v9" strokeWidth="2" />
+                  <path d="M9 8v4c0 1.5 1.5 2 3 2s3-.5 3-2V8" strokeWidth="2" />
+                  
+                  {/* The Scan Line (Laser) */}
+                  <path d="M3 12h18" strokeWidth="1.5" strokeDasharray="3 3" strokeOpacity="0.7" />
+                </svg>
               </div>
               <span className="text-2xl font-bold text-gray-900 tracking-tight">
                 FindMyDine

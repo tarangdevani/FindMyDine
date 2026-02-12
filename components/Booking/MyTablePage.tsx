@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, ArrowLeft, CheckCircle, Receipt, Utensils } from 'lucide-react';
 import { getRestaurantById } from '../../services/restaurantService';
@@ -14,7 +14,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { calculateBill, DEFAULT_BILLING_CONFIG } from '../../utils/billing';
 import { useToast } from '../../context/ToastContext';
-import { recordTransaction } from '../../services/walletService'; // Import wallet service
+import { recordTransaction } from '../../services/walletService';
 
 // Components
 import { ClaimView } from '../MyTable/ClaimView';
@@ -82,6 +82,9 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   const [offerDiscountAmount, setOfferDiscountAmount] = useState(0);
   const [couponDiscountAmount, setCouponDiscountAmount] = useState(0);
 
+  // Use ref to track if review modal was already opened for this session to prevent duplicate opens
+  const hasReviewOpenedRef = useRef(false);
+
   // --- 1. Load Initial Data ---
   useEffect(() => {
     const fetchData = async () => {
@@ -123,38 +126,46 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   useEffect(() => {
     if (!currentUser || !tableId || !restaurantId) return;
     
-    // Query for any active reservation on this table
     const q = query(
         collection(db, "reservations"),
         where("restaurantId", "==", restaurantId),
         where("tableId", "==", tableId),
-        where("status", "in", ["pending", "active"])
+        where("status", "in", ["pending", "active", "completed"])
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
         let myRes: Reservation | null = null;
         let otherRes: Reservation | null = null;
 
-        snapshot.docs.forEach(doc => {
-            const res = { id: doc.id, ...doc.data() } as Reservation;
-            if (res.userId === currentUser.uid) {
-                myRes = res;
-            } else {
-                otherRes = res;
+        // Sort by date/time to get latest if multiple exist
+        const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Reservation))
+                                  .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        if (docs.length > 0) {
+            const latest = docs[0];
+            if (latest.userId === currentUser.uid) {
+                myRes = latest;
+            } else if (latest.status !== 'completed') {
+                otherRes = latest;
             }
-        });
+        }
 
         if (myRes) {
             setCurrentReservation(myRes);
             setIsOccupiedByOthers(false);
+            
+            // Check for Payment Acceptance (Counter Payment)
+            if (myRes.paymentStatus === 'paid' && !hasReviewOpenedRef.current) {
+                hasReviewOpenedRef.current = true;
+                setIsReviewModalOpen(true);
+            }
         } else if (otherRes) {
             setCurrentReservation(null);
             setIsOccupiedByOthers(true);
         } else {
-            // Check for completed reservations for this user just for reference, 
-            // but simplified logic: if no active/pending, table is free or completed
             setCurrentReservation(null);
             setIsOccupiedByOthers(false);
+            hasReviewOpenedRef.current = false; // Reset for new session
         }
     });
     return () => unsubscribe();
@@ -163,7 +174,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   // --- 3. Fetch Orders ---
   useEffect(() => {
     const fetchOrders = async () => {
-        if (currentReservation?.id && (currentReservation.status === 'active' || currentReservation.status === 'completed')) {
+        if (currentReservation?.id) {
             const orders = await getOrdersByReservation(currentReservation.id);
             setExistingOrders(orders);
         }
@@ -173,17 +184,15 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
     return () => clearInterval(interval);
   }, [currentReservation, activeView]);
 
-  // --- 4. Auto-Calculate Offers (Refined) ---
+  // --- 4. Auto-Calculate Offers ---
   useEffect(() => {
     if (activeView === 'bill') {
         const activeItems = existingOrders.flatMap(o => o.items).filter(i => (i.status || 'ordered') !== 'cancelled');
-        // Calculate raw subtotal for discount logic
         const rawSubtotal = activeItems.reduce((acc, item) => {
             const addOnTotal = item.selectedAddOns?.reduce((s, a) => s + a.price, 0) || 0;
             return acc + ((item.price + addOnTotal) * item.quantity);
         }, 0);
         
-        // 1. Find Best Offer
         let maxSavings = 0;
         let best: Offer | null = null;
         const validOffers = offers.filter(o => o.type === 'offer' && o.isActive && new Date() <= new Date(o.validUntil) && new Date() >= new Date(o.validFrom));
@@ -198,7 +207,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
         setBestPublicOffer(best);
         setOfferDiscountAmount(maxSavings);
 
-        // 2. Recalculate Coupon if Applied
         if (appliedCoupon) {
             const savings = calculatePotentialSavings(appliedCoupon, rawSubtotal, activeItems);
             setCouponDiscountAmount(savings);
@@ -209,13 +217,10 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   }, [activeView, existingOrders, offers, appliedCoupon]);
 
   const calculatePotentialSavings = (offer: Offer, subtotal: number = 0, items: OrderItem[] = []): number => {
-      // Check limits
       if (offer.globalBudget && (offer.totalDiscountGiven || 0) >= offer.globalBudget) return 0;
       if (offer.maxUsage && offer.usageCount >= offer.maxUsage) return 0;
-
       if (offer.minSpend && subtotal < offer.minSpend) return 0;
       
-      // Filter items if applicable IDs exist
       let eligibleAmount = subtotal;
       if (offer.applicableItemIds && offer.applicableItemIds.length > 0) {
           eligibleAmount = items
@@ -310,7 +315,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
 
           if (activeOrder) {
               const updatedItems = [...activeOrder.items, ...localCart];
-              // Recalculate basic total for the order document
               const newTotal = updatedItems.reduce((sum, i) => {
                   const addOnPrice = i.selectedAddOns?.reduce((s, a) => s + a.price, 0) || 0;
                   return sum + ((i.price + addOnPrice) * i.quantity);
@@ -366,9 +370,27 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
       if (!currentReservation) return;
       setIsProcessing(true);
       try {
+          // 1. Save discount info to the order(s) so restaurant sees it in dashboard invoice
+          const totalDiscount = offerDiscountAmount + couponDiscountAmount;
+          if (totalDiscount > 0 || appliedCoupon || bestPublicOffer) {
+              const activeOrder = existingOrders[existingOrders.length - 1]; // Attach to latest order
+              if (activeOrder) {
+                  await updateOrder(activeOrder.id!, {
+                      appliedOfferId: appliedCoupon?.id || bestPublicOffer?.id,
+                      appliedDiscountAmount: totalDiscount
+                  });
+              }
+          }
+
+          // 2. Request Payment
           await requestCounterPayment(currentReservation.id!, grandTotal);
           showToast("Check requested. Please proceed to counter.", "success");
-      } catch (e) { console.error(e); showToast("Request failed", "error"); } finally { setIsProcessing(false); }
+      } catch (e) { 
+          console.error(e); 
+          showToast("Request failed", "error"); 
+      } finally { 
+          setIsProcessing(false); 
+      }
   };
 
   const handleOnlinePaymentSuccess = async (paymentDetails: any, grandTotal: number) => {
@@ -386,13 +408,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
               }
           );
 
-          // Mark all active orders in this session as paid and update their item statuses
           const paymentUpdates = existingOrders.map(async (order) => {
-              // Create bill details snapshot for this order to preserve invoice history including discounts
-              // Calculate portion of discount if multiple orders? Simplified: Attach total discount to the first order or spread it.
-              // For simplicity, we attach the final calculation to the LAST active order or all orders get a paid status.
-              // Here, we update the Order to reflect the final financial snapshot.
-              
               const breakdown = calculateBill(existingOrders.flatMap(o => o.items), billingConfig);
               const totalDiscount = offerDiscountAmount + couponDiscountAmount;
               
@@ -401,11 +417,10 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
                   serviceCharge: breakdown.serviceChargeAmount,
                   tax: breakdown.taxAmount,
                   discount: totalDiscount,
-                  grandTotal: grandTotal, // Paid amount
+                  grandTotal: grandTotal, 
                   discountDetails: appliedCoupon ? `Coupon ${appliedCoupon.code}` : bestPublicOffer ? `Offer ${bestPublicOffer.title}` : ''
               };
 
-              // Update the order with payment info and snapshot
               await updateOrder(order.id!, { 
                   status: 'paid',
                   items: order.items.map(i => ({ ...i, status: 'paid' })),
@@ -417,7 +432,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
           
           await Promise.all(paymentUpdates);
 
-          // WALLET: Record bill payment transaction
           await recordTransaction({
               restaurantId: restaurantId!,
               type: 'bill_payment',
@@ -433,7 +447,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
               }
           });
 
-          // Track Offer Usage if applied
           if (appliedCoupon || bestPublicOffer) {
               const usedOffer = appliedCoupon || bestPublicOffer;
               const discount = appliedCoupon ? couponDiscountAmount : offerDiscountAmount;
@@ -448,10 +461,16 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
               }
           }
 
-          // Trigger Review Modal immediately after successful payment
+          // Force Review Modal Open immediately
+          hasReviewOpenedRef.current = true;
           setIsReviewModalOpen(true);
 
-      } catch (e) { console.error(e); showToast("Payment recording failed", "error"); } finally { setIsProcessing(false); }
+      } catch (e) { 
+          console.error(e); 
+          showToast("Payment recording failed", "error"); 
+      } finally { 
+          setIsProcessing(false); 
+      }
   };
 
   const handleReviewSubmit = async (rating: number, comment: string) => {
@@ -510,7 +529,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
           }))
       ).sort((a, b) => new Date(b.orderTime).getTime() - new Date(a.orderTime).getTime());
 
-      // Prepare bill items for View
       const billItems: { key: string; item: OrderItem; quantity: number }[] = [];
       displayItems.filter(i => i.status !== 'cancelled').forEach(item => {
           const key = `${item.menuItemId}_${item.selectedAddOns?.map(a=>a.id).sort().join('_')||''}`;
@@ -519,7 +537,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
           else billItems.push({ key, item, quantity: item.quantity });
       });
 
-      // Calculate Totals using new utility
       const billBreakdown = calculateBill(existingOrders.flatMap(o => o.items), billingConfig);
 
       return (
@@ -545,7 +562,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
                     items={billItems} 
                     breakdown={billBreakdown}
                     billingConfig={billingConfig}
-                    // Pass calculated discounts
                     offerDiscount={offerDiscountAmount}
                     couponDiscount={couponDiscountAmount}
                     
@@ -553,7 +569,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
                     setPaymentMethod={setPaymentMethod} 
                     isProcessing={isProcessing} 
                     
-                    // Handlers
                     onPayCounter={handleCounterPayment}
                     onPayOnline={handleOnlinePaymentSuccess}
 
@@ -569,7 +584,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
                 />
             )}
 
-            {/* Bottom Nav */}
             {activeView === 'summary' && localCart.length === 0 && (
                 <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] z-30">
                     <div className="max-w-md mx-auto grid grid-cols-2 gap-3">
@@ -614,7 +628,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
 
             <ReviewModal 
                 isOpen={isReviewModalOpen}
-                onClose={() => { setIsReviewModalOpen(false); navigate('/'); }} // Close and go home
+                onClose={() => { setIsReviewModalOpen(false); navigate('/'); }}
                 onSubmit={handleReviewSubmit}
                 restaurantName={restaurant.name}
             />
@@ -622,7 +636,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
       );
   }
 
-  // View: Claim
   return (
     <ClaimView 
         restaurant={restaurant} 

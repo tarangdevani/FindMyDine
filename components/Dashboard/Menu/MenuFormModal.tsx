@@ -7,6 +7,7 @@ import { ImageSection } from './Form/ImageSection';
 import { CategorySection } from './Form/CategorySection';
 import { AddOnSection } from './Form/AddOnSection';
 import { Checkbox } from '../../UI/Checkbox';
+import { useToast } from '../../../context/ToastContext';
 
 interface MenuFormModalProps {
   isOpen: boolean;
@@ -48,7 +49,33 @@ export const MenuFormModal: React.FC<MenuFormModalProps> = ({
   categorySearch, setCategorySearch, onCreateCategory,
   addOnSearch, setAddOnSearch, newAddOnPrice, setNewAddOnPrice, isCreatingAddOn, onCreateAddOn, onToggleAddOn
 }) => {
+  const { showToast } = useToast();
+
   if (!isOpen) return null;
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      
+      // Validation
+      if (!formData.name?.trim()) {
+          showToast("Item name is required.", "error");
+          return;
+      }
+      if (formData.price < 0) {
+          showToast("Price cannot be negative.", "error");
+          return;
+      }
+      if (!formData.categoryId) {
+          showToast("Please select a category.", "error");
+          return;
+      }
+      if (!formData.description?.trim()) {
+          showToast("Description is required.", "error");
+          return;
+      }
+
+      onSubmit(e);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -59,7 +86,7 @@ export const MenuFormModal: React.FC<MenuFormModalProps> = ({
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full text-gray-500"><X size={20}/></button>
         </div>
         
-        <form onSubmit={onSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleFormSubmit} className="p-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             <ImageSection 
@@ -69,7 +96,7 @@ export const MenuFormModal: React.FC<MenuFormModalProps> = ({
             />
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Item Name</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Item Name <span className="text-red-500">*</span></label>
               <input 
                 type="text" 
                 required
@@ -81,7 +108,7 @@ export const MenuFormModal: React.FC<MenuFormModalProps> = ({
             </div>
             
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Price ($)</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Price ($) <span className="text-red-500">*</span></label>
               <input 
                 type="number" 
                 required
@@ -107,7 +134,7 @@ export const MenuFormModal: React.FC<MenuFormModalProps> = ({
             />
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Description <span className="text-red-500">*</span></label>
               <textarea 
                 required
                 rows={3}
@@ -148,7 +175,7 @@ export const MenuFormModal: React.FC<MenuFormModalProps> = ({
 
           <div className="pt-4 border-t border-gray-100 flex justify-end gap-3 sticky bottom-0 bg-white pb-2">
             <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button type="submit" isLoading={isLoading} disabled={!formData.categoryId}>
+            <Button type="submit" isLoading={isLoading}>
               <Save size={18} className="mr-2" /> Save Item
             </Button>
           </div>

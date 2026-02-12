@@ -153,31 +153,36 @@ export const POSView: React.FC<POSViewProps> = ({ menuItems, categories, tables,
   };
 
   // Calculate Finals
-  // Use passed billingConfig, or fallback to default
   const breakdown = calculateBill(
       cart, 
       billingConfig, 
       manualDiscountValue > 0 ? { type: manualDiscountType, value: manualDiscountValue } : undefined
   );
   
-  // Calculate extra offer/coupon deductions
   const offerSavings = selectedOffer ? calculateSavings(selectedOffer) : 0;
   const couponSavings = appliedCoupon ? calculateSavings(appliedCoupon) : 0;
   
-  // Adjusted Grand Total
-  // Discount is usually applied after tax in some regions, but typically before tax in others.
-  // Here we subtract from Grand Total as a simple discount on final bill. 
-  // If complex tax logic is needed (discount reduces taxable amount), it should be done inside calculateBill.
-  // For POS simplicity here, we treat offer/coupon as payment method or post-tax discount.
   const finalGrandTotal = Math.max(0, breakdown.grandTotal - offerSavings - couponSavings);
 
   const handleSubmit = () => {
     if (!selectedTableId) { showToast("Please select a table.", "warning"); return; }
     if (cart.length === 0) { showToast("Cart is empty.", "warning"); return; }
+    if (!customerName.trim()) { showToast("Customer name required.", "warning"); return; }
+
+    // VALIDATION: Discount Logic
+    if (manualDiscountValue > 0) {
+        if (manualDiscountType === 'percentage' && manualDiscountValue > 100) {
+            showToast("Percentage discount cannot exceed 100%.", "error");
+            return;
+        }
+        if (manualDiscountType === 'fixed' && manualDiscountValue > breakdown.grandTotal) {
+            showToast("Fixed discount cannot exceed the total bill.", "error");
+            return;
+        }
+    }
 
     const selectedTable = tables.find(t => t.id === selectedTableId);
     
-    // Store exact snapshot of bill details so history matches exactly what was generated
     const billDetailsSnapshot = {
         subtotal: breakdown.menuSubtotal,
         serviceCharge: breakdown.serviceChargeAmount,
