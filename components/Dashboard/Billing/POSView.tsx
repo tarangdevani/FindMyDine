@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Plus, Trash2, ChevronDown, Percent, DollarSign, Save, Gift, X, LayoutGrid } from 'lucide-react';
-import { MenuItem, FoodCategory, OrderItem, Offer, TableItem, BillingConfig } from '../../../types';
+import { MenuItem, FoodCategory, OrderItem, Offer, TableItem, BillingConfig, Reservation, Order } from '../../../types';
 import { Button } from '../../UI/Button';
 import { calculateBill } from '../../../utils/billing';
 import { useToast } from '../../../context/ToastContext';

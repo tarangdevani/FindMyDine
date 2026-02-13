@@ -1,5 +1,4 @@
 
-import { collection, addDoc, query, where, getDocs, orderBy, doc, updateDoc, getDoc, runTransaction } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { Order, OrderItem, OrderStatus } from "../types";
 
@@ -12,7 +11,6 @@ const deepClean = <T>(obj: T): T => {
 
 export const createOrder = async (order: Order): Promise<string | null> => {
   try {
-    // Ensure all items have a status
     const itemsWithStatus = order.items.map(item => ({
       ...item,
       status: item.status || 'ordered'
@@ -24,10 +22,8 @@ export const createOrder = async (order: Order): Promise<string | null> => {
       createdAt: new Date().toISOString()
     };
 
-    // Deep clean to remove any nested undefined fields
     const cleanData = deepClean(orderData);
-
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), cleanData);
+    const docRef = await db.collection(COLLECTION_NAME).add(cleanData);
     return docRef.id;
   } catch (error) {
     console.error("Error creating order:", error);
@@ -37,12 +33,10 @@ export const createOrder = async (order: Order): Promise<string | null> => {
 
 export const getOrdersByReservation = async (reservationId: string): Promise<Order[]> => {
   try {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where("reservationId", "==", reservationId),
-      orderBy("createdAt", "desc")
-    );
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection(COLLECTION_NAME)
+      .where("reservationId", "==", reservationId)
+      .orderBy("createdAt", "desc")
+      .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
   } catch (error) {
     console.error("Error fetching orders:", error);
@@ -50,14 +44,15 @@ export const getOrdersByReservation = async (reservationId: string): Promise<Ord
   }
 };
 
+// Original fetcher (Active/Live use)
 export const getOrdersByRestaurant = async (restaurantId: string): Promise<Order[]> => {
   try {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where("restaurantId", "==", restaurantId),
-      orderBy("createdAt", "desc")
-    );
-    const snapshot = await getDocs(q);
+    // Only fetch recent or active orders for the live board
+    const snapshot = await db.collection(COLLECTION_NAME)
+      .where("restaurantId", "==", restaurantId)
+      .orderBy("createdAt", "desc")
+      .limit(50) // Safety cap
+      .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
   } catch (error) {
     console.error("Error fetching restaurant orders:", error);
@@ -65,11 +60,73 @@ export const getOrdersByRestaurant = async (restaurantId: string): Promise<Order
   }
 };
 
+// NEW: Paginated Fetcher for History
+export const getOrdersHistoryPaginated = async (
+  restaurantId: string,
+  pageSize: number,
+  lastDoc: any = null,
+  filters?: {
+    startDate?: string;
+    endDate?: string;
+    search?: string; // Note: Firestore lacks simple substring search. We'll use exact ID or rely on date.
+  }
+): Promise<{ data: Order[], lastDoc: any }> => {
+  try {
+    let query = db.collection(COLLECTION_NAME)
+      .where("restaurantId", "==", restaurantId);
+
+    // If searching by specific ID (exact match)
+    if (filters?.search && filters.search.length > 5) {
+       // Assuming user types an ID.
+       // Firestore doesn't support OR queries nicely with other filters.
+       // We'll prioritize the date/sort query, and if search is present, we might have to fallback or do client side.
+       // For a robust app, we'd use Algolia. 
+       // For now, we will stick to Date sorting and Filter on client if simple text,
+       // OR if it's a prefix scan on a specific field like tableName (if indexed).
+       // Let's rely on Date Range as primary server filter.
+    }
+
+    query = query.orderBy("createdAt", "desc");
+
+    if (filters?.startDate) {
+      query = query.where("createdAt", ">=", filters.startDate);
+    }
+    if (filters?.endDate) {
+      query = query.where("createdAt", "<=", filters.endDate + 'T23:59:59');
+    }
+
+    if (lastDoc) {
+      query = query.startAfter(lastDoc);
+    }
+
+    const snapshot = await query.limit(pageSize).get();
+    
+    // Client-side simple substring search logic for Name/Table since Firestore can't do it combined
+    let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+    
+    if (filters?.search) {
+        const term = filters.search.toLowerCase();
+        data = data.filter(o => 
+            o.tableName.toLowerCase().includes(term) || 
+            o.userName.toLowerCase().includes(term) ||
+            o.id?.toLowerCase().includes(term)
+        );
+    }
+
+    const newLastDoc = snapshot.docs[snapshot.docs.length - 1];
+
+    return { data, lastDoc: newLastDoc };
+  } catch (error) {
+    console.error("Error fetching paginated order history:", error);
+    return { data: [], lastDoc: null };
+  }
+};
+
 export const updateOrder = async (orderId: string, data: Partial<Order>): Promise<boolean> => {
   try {
     const cleanData = deepClean(data);
-    const ref = doc(db, COLLECTION_NAME, orderId);
-    await updateDoc(ref, cleanData);
+    const ref = db.collection(COLLECTION_NAME).doc(orderId);
+    await ref.update(cleanData);
     return true;
   } catch (error) {
     console.error("Error updating order:", error);
@@ -79,11 +136,11 @@ export const updateOrder = async (orderId: string, data: Partial<Order>): Promis
 
 export const updateOrderItemStatus = async (orderId: string, itemIndex: number, newStatus: OrderStatus): Promise<boolean> => {
   try {
-    const orderRef = doc(db, COLLECTION_NAME, orderId);
+    const orderRef = db.collection(COLLECTION_NAME).doc(orderId);
     
-    await runTransaction(db, async (transaction) => {
+    await db.runTransaction(async (transaction) => {
         const orderSnap = await transaction.get(orderRef);
-        if (!orderSnap.exists()) throw "Order does not exist!";
+        if (!orderSnap.exists) throw "Order does not exist!";
 
         const orderData = orderSnap.data() as Order;
         const updatedItems = [...orderData.items];
@@ -92,12 +149,9 @@ export const updateOrderItemStatus = async (orderId: string, itemIndex: number, 
 
         updatedItems[itemIndex] = { ...updatedItems[itemIndex], status: newStatus };
 
-        // IMPORTANT: Deep clean the array before writing to prevent "Bad Request" due to undefined values in nested objects
         const cleanItems = deepClean(updatedItems);
-
         const updatePayload: any = { items: cleanItems };
         
-        // Simple state progression for parent order
         if (newStatus === 'preparing' && orderData.status === 'ordered') {
             updatePayload.status = 'preparing';
         }
@@ -114,10 +168,10 @@ export const updateOrderItemStatus = async (orderId: string, itemIndex: number, 
 
 export const markOrderAsPaid = async (orderId: string): Promise<boolean> => {
   try {
-    const orderRef = doc(db, COLLECTION_NAME, orderId);
-    await runTransaction(db, async (transaction) => {
+    const orderRef = db.collection(COLLECTION_NAME).doc(orderId);
+    await db.runTransaction(async (transaction) => {
         const orderSnap = await transaction.get(orderRef);
-        if (!orderSnap.exists()) throw "Order does not exist!";
+        if (!orderSnap.exists) throw "Order does not exist!";
 
         const orderData = orderSnap.data() as Order;
         

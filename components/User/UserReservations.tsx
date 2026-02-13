@@ -171,9 +171,6 @@ export const UserReservations: React.FC<UserReservationsProps> = ({ currentUser 
                          <Clock size={14} /> {res.startTime}
                       </div>
                       <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md">
-                         <UtensilsCrossed size={14} /> {res.guestCount} Guests
-                      </div>
-                      <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md">
                          <MapPin size={14} /> {res.tableName}
                       </div>
                    </div>

@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import { Loader2, Star, Trash2 } from 'lucide-react';
+import { Star, Trash2 } from 'lucide-react';
 import { Review } from '../../types';
 import { getReviewsByRestaurant } from '../../services/reviewService';
 import { getRestaurantProfile } from '../../services/restaurantService';
 import { ReviewList } from '../Reviews/ReviewList';
-import { deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
+import { Skeleton } from '../UI/Skeleton';
 
 interface ReviewsProps {
   userId: string;
@@ -46,7 +46,7 @@ export const Reviews: React.FC<ReviewsProps> = ({ userId }) => {
   const handleDelete = async (reviewId: string) => {
       if (!confirm("Are you sure you want to delete this review?")) return;
       try {
-          await deleteDoc(doc(db, "reviews", reviewId));
+          await db.collection("reviews").doc(reviewId).delete();
           setReviews(prev => prev.filter(r => r.id !== reviewId));
           showToast("Review deleted.", "success");
       } catch (e) {
@@ -55,7 +55,20 @@ export const Reviews: React.FC<ReviewsProps> = ({ userId }) => {
   };
 
   if (isLoading) {
-    return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary-600" size={32} /></div>;
+    return (
+        <div className="animate-fade-in-up pb-10 space-y-8">
+            <div className="flex justify-between items-center">
+                <div className="space-y-2">
+                    <Skeleton className="h-8 w-48" variant="text"/>
+                    <Skeleton className="h-4 w-64" variant="text"/>
+                </div>
+                <Skeleton className="h-24 w-40 rounded-2xl"/>
+            </div>
+            <div className="space-y-4">
+                {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-32 w-full rounded-2xl" />)}
+            </div>
+        </div>
+    );
   }
 
   return (

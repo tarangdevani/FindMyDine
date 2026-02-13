@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { UserProfile, SubscriptionPlan } from '../../types';
 import { getRestaurantProfile } from '../../services/restaurantService';
 import { checkSubscriptionValidity } from '../../services/subscriptionService';
@@ -29,11 +30,34 @@ interface RestaurantDashboardProps {
 }
 
 export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({ user, onLogout }) => {
-  const [activeView, setActiveView] = useState<DashboardView>('overview');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Robust Active View Detection
+  // Assuming route is /dashboard/*
+  // We strip '/dashboard/' and check the first segment
+  const pathSegments = location.pathname.split('/');
+  const dashboardIndex = pathSegments.indexOf('dashboard');
+  let currentView: DashboardView = 'overview';
+  
+  const validViews: DashboardView[] = [
+    'overview', 'reservations', 'bookings', 'orders', 'billing', 
+    'offers', 'reviews', 'menu', 'tables', 'ai-photography', 
+    'customers', 'settings', 'profile', 'wallet', 'financials', 
+    'staff', 'subscription'
+  ];
+
+  if (dashboardIndex !== -1 && pathSegments.length > dashboardIndex + 1) {
+      const potentialView = pathSegments[dashboardIndex + 1];
+      if (validViews.includes(potentialView as DashboardView)) {
+          currentView = potentialView as DashboardView;
+      }
+  }
+
   // Subscription State
   const [plan, setPlan] = useState<SubscriptionPlan>('free');
   const [isReadOnly, setIsReadOnly] = useState(false);
@@ -59,38 +83,22 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({ user, 
     checkSub();
   }, [effectiveRestaurantId]);
 
-  const renderContent = () => {
-    // Common Props for components that need write access control
-    const writeProps = { userId: effectiveRestaurantId, isReadOnly };
-
-    switch (activeView) {
-      case 'profile': return <RestaurantDetails userId={effectiveRestaurantId} />; // Usually editable even on free to set up? Or restrict? Restricting for consistency.
-      case 'menu': return <MenuManagement {...writeProps} />;
-      case 'tables': return <TableManagement {...writeProps} />;
-      case 'ai-photography': return <AIPhotography userId={effectiveRestaurantId} />; // Has its own limit check
-      case 'settings': return <Settings {...writeProps} currentUserRole={user?.role} />;
-      case 'reservations': return <Reservations userId={effectiveRestaurantId} />;
-      case 'bookings': return <Bookings userId={effectiveRestaurantId} />;
-      case 'orders': return <OrderManagement userId={effectiveRestaurantId} />;
-      case 'billing': return <Billing userId={effectiveRestaurantId} />;
-      case 'offers': return <Offers userId={effectiveRestaurantId} />;
-      case 'reviews': return <Reviews userId={effectiveRestaurantId} />;
-      case 'wallet': return <Wallet userId={effectiveRestaurantId} onNavigate={setActiveView} />;
-      case 'financials': return <FinancialStats userId={effectiveRestaurantId} />;
-      case 'staff': return <StaffManagement userId={effectiveRestaurantId} />;
-      case 'subscription': return <Subscription userId={effectiveRestaurantId} />;
-      case 'overview':
-      default: return <Overview userId={effectiveRestaurantId} onViewChange={setActiveView} />;
+  const handleNavigation = (view: DashboardView) => {
+    if (view === 'overview') {
+        navigate('/dashboard');
+    } else {
+        navigate(`/dashboard/${view}`);
     }
   };
+
+  // Common Props for components that need write access control
+  const writeProps = { userId: effectiveRestaurantId, isReadOnly };
 
   return (
     <div className="flex h-screen bg-gray-50 font-sans overflow-hidden">
       
       {/* Sidebar Child Component */}
       <Sidebar 
-        activeView={activeView} 
-        setActiveView={setActiveView}
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
         isMobileMenuOpen={isMobileMenuOpen}
@@ -102,20 +110,41 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({ user, 
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-full overflow-hidden w-full">
         <DashboardHeader 
-          activeView={activeView} 
+          activeView={currentView} 
           setIsMobileMenuOpen={setIsMobileMenuOpen} 
         />
         
         {/* Read Only Banner */}
-        {isReadOnly && activeView !== 'subscription' && (
+        {isReadOnly && currentView !== 'subscription' && (
             <div className="bg-red-500 text-white text-xs font-bold text-center py-1">
                 Free Plan Active. Write access restricted. Upgrade to Base/Pro/Ultra to manage data. 
-                <button onClick={() => setActiveView('subscription')} className="underline ml-2 text-white">Upgrade Now</button>
+                <button onClick={() => navigate('/dashboard/subscription')} className="underline ml-2 text-white">Upgrade Now</button>
             </div>
         )}
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
-          {renderContent()}
+          <Routes>
+            <Route index element={<Overview userId={effectiveRestaurantId} onViewChange={handleNavigation} />} />
+            
+            <Route path="profile" element={<RestaurantDetails userId={effectiveRestaurantId} />} />
+            <Route path="menu" element={<MenuManagement {...writeProps} />} />
+            <Route path="tables" element={<TableManagement userId={effectiveRestaurantId} />} />
+            <Route path="ai-photography" element={<AIPhotography userId={effectiveRestaurantId} />} />
+            <Route path="settings" element={<Settings {...writeProps} currentUserRole={user?.role} />} />
+            <Route path="reservations" element={<Reservations userId={effectiveRestaurantId} />} />
+            <Route path="bookings" element={<Bookings userId={effectiveRestaurantId} />} />
+            <Route path="orders" element={<OrderManagement userId={effectiveRestaurantId} />} />
+            <Route path="billing" element={<Billing userId={effectiveRestaurantId} />} />
+            <Route path="offers" element={<Offers userId={effectiveRestaurantId} />} />
+            <Route path="reviews" element={<Reviews userId={effectiveRestaurantId} />} />
+            <Route path="wallet" element={<Wallet userId={effectiveRestaurantId} onNavigate={handleNavigation} />} />
+            <Route path="financials" element={<FinancialStats userId={effectiveRestaurantId} />} />
+            <Route path="staff" element={<StaffManagement userId={effectiveRestaurantId} />} />
+            <Route path="subscription" element={<Subscription userId={effectiveRestaurantId} />} />
+            
+            {/* Redirect any unknown dashboard sub-paths to the root dashboard (Overview) */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
         </main>
       </div>
 

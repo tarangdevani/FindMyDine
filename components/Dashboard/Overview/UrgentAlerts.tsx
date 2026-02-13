@@ -22,7 +22,7 @@ export const UrgentAlerts: React.FC<UrgentAlertsProps> = ({ liveRequests, pendin
                 <div className="space-y-3">
                     {liveRequests.map(req => (
                         <div key={req.id} className="bg-white p-4 rounded-xl shadow-soft border-l-4 border-orange-500 flex justify-between items-center">
-                            <div><p className="font-bold text-gray-900">{req.tableName}</p><p className="text-xs text-gray-500">{req.userName} • {req.guestCount}p</p></div>
+                            <div><p className="font-bold text-gray-900">{req.tableName}</p><p className="text-xs text-gray-500">{req.userName}</p></div>
                             <div className="flex gap-2"><button onClick={() => onRequestAction(req, 'decline')} className="p-2 hover:bg-red-50 text-red-500 rounded-lg"><X size={18}/></button><button onClick={() => onRequestAction(req, 'confirm')} className="bg-green-600 text-white p-2 rounded-lg shadow-sm"><Check size={18}/></button></div>
                         </div>
                     ))}

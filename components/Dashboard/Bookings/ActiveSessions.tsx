@@ -3,6 +3,7 @@ import React from 'react';
 import { Armchair, Utensils, Receipt } from 'lucide-react';
 import { Reservation, Order } from '../../../types';
 import { Button } from '../../UI/Button';
+import { calculateBill } from '../../../utils/billing';
 
 interface ActiveSessionsProps {
   sessions: Reservation[];
@@ -14,16 +15,17 @@ export const ActiveSessions: React.FC<ActiveSessionsProps> = ({ sessions, orders
   
   const calculateTotal = (resId: string) => {
     const resOrders = orders.filter(o => o.reservationId === resId);
-    let total = 0;
-    let itemCount = 0;
     
-    resOrders.forEach(order => {
-        const activeItems = order.items.filter(i => i.status !== 'cancelled');
-        total += activeItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-        itemCount += activeItems.length;
-    });
+    // We collect all items first
+    const allItems = resOrders.flatMap(o => o.items.filter(i => i.status !== 'cancelled'));
     
-    return { total, itemCount, orders: resOrders };
+    // Use the utility to calculate proper grand total (including tax/service of default config)
+    // Note: This uses DEFAULT_BILLING_CONFIG as we don't have per-restaurant config here easily.
+    // Ideally this component should receive the restaurant's config prop. 
+    // For visual preview on dashboard card, default/estimate is acceptable or we assume standard.
+    const bill = calculateBill(allItems);
+    
+    return { total: bill.grandTotal, itemCount: allItems.length, orders: resOrders };
   };
 
   return (
@@ -59,7 +61,7 @@ export const ActiveSessions: React.FC<ActiveSessionsProps> = ({ sessions, orders
                                  <h4 className="font-extrabold text-xl text-gray-900">{session.tableName}</h4>
                                  {session.type === 'walk_in' && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold uppercase">Walk-in</span>}
                               </div>
-                              <p className="text-sm text-gray-500">{session.userName} • {session.guestCount} Guests</p>
+                              <p className="text-sm text-gray-500">{session.userName}</p>
                            </div>
                            <div className="text-right">
                               <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Current Bill</p>

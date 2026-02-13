@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { Reservation, Order, ReservationStatus } from '../../types';
 import { getReservationsByRestaurant, updateReservationStatus } from '../../services/reservationService';
 import { getOrdersByRestaurant } from '../../services/orderService';
+import { Skeleton } from '../UI/Skeleton';
 
 // Child Components
 import { BookingsHeader } from './Bookings/BookingsHeader';
@@ -66,7 +67,17 @@ export const Bookings: React.FC<BookingsProps> = ({ userId }) => {
     }
   };
 
-  if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary-600" size={32} /></div>;
+  if (isLoading) {
+    return (
+        <div className="animate-fade-in-up pb-10 space-y-8">
+            <Skeleton className="h-20 w-full mb-8 rounded-xl" />
+            <Skeleton className="h-64 w-full rounded-2xl" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-48 w-full rounded-2xl" />)}
+            </div>
+        </div>
+    );
+  }
 
   // Split bookings
   const pendingWalkIns = bookings.filter(b => b.status === 'pending' && b.type === 'walk_in');

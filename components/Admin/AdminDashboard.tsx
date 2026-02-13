@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { UserProfile } from '../../types';
 import { AdminSidebar, AdminView } from './AdminSidebar';
 import { AdminOverview } from './Views/AdminOverview';
@@ -13,23 +14,22 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }) => {
-  const [activeView, setActiveView] = useState<AdminView>('overview');
-
-  const renderContent = () => {
-    switch (activeView) {
-      case 'restaurants': return <AdminRestaurants />;
-      case 'users': return <AdminUsers />;
-      case 'payouts': return <AdminPayouts />;
-      case 'overview':
-      default: return <AdminOverview />;
-    }
-  };
+  const location = useLocation();
+  
+  // Derive active view from URL for header
+  const pathSegments = location.pathname.split('/');
+  const adminIndex = pathSegments.indexOf('admin');
+  let activeView = 'overview';
+  
+  if (adminIndex !== -1 && pathSegments.length > adminIndex + 1) {
+      activeView = pathSegments[adminIndex + 1];
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans pl-64">
       <AdminSidebar 
-        activeView={activeView} 
-        setActiveView={setActiveView} 
+        activeView={activeView as AdminView} 
+        setActiveView={() => {}} // No-op, NavLink handles it
         user={user} 
         onLogoutClick={onLogout} 
       />
@@ -43,7 +43,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout }
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-           {renderContent()}
+           <Routes>
+              <Route index element={<AdminOverview />} />
+              <Route path="restaurants" element={<AdminRestaurants />} />
+              <Route path="users" element={<AdminUsers />} />
+              <Route path="payouts" element={<AdminPayouts />} />
+              <Route path="*" element={<Navigate to="/admin" replace />} />
+           </Routes>
         </main>
       </div>
     </div>

@@ -1,5 +1,4 @@
 
-import { collection, addDoc, query, where, getDocs, orderBy, doc, runTransaction, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { Review } from "../types";
 
@@ -7,22 +6,29 @@ const COLLECTION_NAME = "reviews";
 
 export const addReview = async (review: Review): Promise<boolean> => {
   try {
-    await runTransaction(db, async (transaction) => {
-      // 1. Create Review Document
-      const newReviewRef = doc(collection(db, COLLECTION_NAME));
+    await db.runTransaction(async (transaction) => {
+      // REFERENCES
+      const newReviewRef = db.collection(COLLECTION_NAME).doc();
+      const restaurantRef = db.collection("restaurants").doc(review.restaurantId);
+      const userRef = db.collection("users").doc(review.restaurantId);
+
+      // 1. READS (MUST come before any writes)
+      const restaurantDoc = await transaction.get(restaurantRef);
+      const userDoc = await transaction.get(userRef);
+
+      // 2. WRITES
+      
+      // Create Review
       transaction.set(newReviewRef, {
         ...review,
         createdAt: new Date().toISOString()
       });
 
-      // 2. Update Restaurant Aggregate Rating (Public Data)
-      const restaurantRef = doc(db, "restaurants", review.restaurantId);
-      const restaurantDoc = await transaction.get(restaurantRef);
-
-      if (restaurantDoc.exists()) {
+      // Update Public Restaurant Data
+      if (restaurantDoc.exists) {
         const data = restaurantDoc.data();
-        const currentRating = data.rating || 0;
-        const currentCount = data.ratingCount || 0;
+        const currentRating = data?.rating || 0;
+        const currentCount = data?.ratingCount || 0;
 
         const newCount = currentCount + 1;
         const newRating = ((currentRating * currentCount) + review.rating) / newCount;
@@ -33,14 +39,12 @@ export const addReview = async (review: Review): Promise<boolean> => {
         });
       }
 
-      // 3. Update Restaurant Profile (User Data - Private)
-      const userRef = doc(db, "users", review.restaurantId);
-      const userDoc = await transaction.get(userRef);
-      if(userDoc.exists()) {
+      // Update User Profile (Restaurant Private Data)
+      if(userDoc.exists) {
          const data = userDoc.data();
-         if (data.role === 'restaurant' || data.restaurantName) {
-             const currentRating = data.rating || 0;
-             const currentCount = data.ratingCount || 0;
+         if (data?.role === 'restaurant' || data?.restaurantName) {
+             const currentRating = data?.rating || 0;
+             const currentCount = data?.ratingCount || 0;
              const newCount = currentCount + 1;
              const newRating = ((currentRating * currentCount) + review.rating) / newCount;
              
@@ -61,29 +65,35 @@ export const addReview = async (review: Review): Promise<boolean> => {
 
 export const updateReview = async (reviewId: string, restaurantId: string, newRating: number, newComment: string): Promise<boolean> => {
   try {
-    await runTransaction(db, async (transaction) => {
-      const reviewRef = doc(db, COLLECTION_NAME, reviewId);
-      const reviewDoc = await transaction.get(reviewRef);
-      
-      if (!reviewDoc.exists()) throw "Review does not exist";
-      
-      const oldRating = reviewDoc.data().rating;
+    await db.runTransaction(async (transaction) => {
+      // REFERENCES
+      const reviewRef = db.collection(COLLECTION_NAME).doc(reviewId);
+      const restaurantRef = db.collection("restaurants").doc(restaurantId);
+      const userRef = db.collection("users").doc(restaurantId);
 
-      // 1. Update Review Doc
+      // 1. READS
+      const reviewDoc = await transaction.get(reviewRef);
+      const restaurantDoc = await transaction.get(restaurantRef);
+      const userDoc = await transaction.get(userRef);
+      
+      if (!reviewDoc.exists) throw "Review does not exist";
+      
+      const oldRating = reviewDoc.data()?.rating;
+
+      // 2. WRITES
+
+      // Update Review Doc
       transaction.update(reviewRef, {
         rating: newRating,
         comment: newComment,
         updatedAt: new Date().toISOString()
       });
 
-      // 2. Recalculate Restaurant Average
-      const restaurantRef = doc(db, "restaurants", restaurantId);
-      const restaurantDoc = await transaction.get(restaurantRef);
-
-      if (restaurantDoc.exists()) {
+      // Update Public Restaurant Data
+      if (restaurantDoc.exists) {
         const data = restaurantDoc.data();
-        const currentRating = data.rating || 0;
-        const currentCount = data.ratingCount || 1;
+        const currentRating = data?.rating || 0;
+        const currentCount = data?.ratingCount || 1;
 
         // Formula to replace old rating with new rating in average
         const totalScore = (currentRating * currentCount) - oldRating + newRating;
@@ -94,14 +104,12 @@ export const updateReview = async (reviewId: string, restaurantId: string, newRa
         });
       }
       
-      // 3. Update User Profile Average
-      const userRef = doc(db, "users", restaurantId);
-      const userDoc = await transaction.get(userRef);
-      if(userDoc.exists()) {
+      // Update User Profile Data
+      if(userDoc.exists) {
          const data = userDoc.data();
-         if (data.role === 'restaurant' || data.restaurantName) {
-             const currentRating = data.rating || 0;
-             const currentCount = data.ratingCount || 1;
+         if (data?.role === 'restaurant' || data?.restaurantName) {
+             const currentRating = data?.rating || 0;
+             const currentCount = data?.ratingCount || 1;
              const totalScore = (currentRating * currentCount) - oldRating + newRating;
              const finalRating = totalScore / currentCount;
              
@@ -120,12 +128,11 @@ export const updateReview = async (reviewId: string, restaurantId: string, newRa
 
 export const getUserReview = async (restaurantId: string, userId: string): Promise<Review | null> => {
   try {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where("restaurantId", "==", restaurantId),
-      where("userId", "==", userId)
-    );
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection(COLLECTION_NAME)
+      .where("restaurantId", "==", restaurantId)
+      .where("userId", "==", userId)
+      .get();
+    
     if (!snapshot.empty) {
       return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Review;
     }
@@ -138,12 +145,10 @@ export const getUserReview = async (restaurantId: string, userId: string): Promi
 
 export const getReviewsByRestaurant = async (restaurantId: string): Promise<Review[]> => {
   try {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where("restaurantId", "==", restaurantId),
-      orderBy("createdAt", "desc")
-    );
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection(COLLECTION_NAME)
+      .where("restaurantId", "==", restaurantId)
+      .orderBy("createdAt", "desc")
+      .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
   } catch (error) {
     console.error("Error fetching reviews:", error);

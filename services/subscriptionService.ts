@@ -1,5 +1,4 @@
 
-import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { RestaurantProfile, SubscriptionPlan, SubscriptionDetails } from "../types";
 import { recordTransaction } from "./walletService";
@@ -50,10 +49,10 @@ export const purchaseSubscription = async (
   paymentId?: string
 ): Promise<boolean> => {
   try {
-    const userRef = doc(db, "users", userId);
-    const userSnap = await getDoc(userRef);
+    const userRef = db.collection("users").doc(userId);
+    const userSnap = await userRef.get();
     
-    if (!userSnap.exists()) return false;
+    if (!userSnap.exists) return false;
     
     const userData = userSnap.data() as RestaurantProfile;
     const currentSub = userData.subscription;
@@ -88,13 +87,13 @@ export const purchaseSubscription = async (
     };
 
     // Update User Profile
-    await updateDoc(userRef, {
+    await userRef.update({
         subscription: newSubscription
     });
 
     // Also update public listing for visibility filtering
     try {
-        await updateDoc(doc(db, "restaurants", userId), {
+        await db.collection("restaurants").doc(userId).update({
             subscriptionPlan: plan
         });
     } catch (e) {
@@ -138,8 +137,8 @@ export const checkSubscriptionValidity = (sub?: SubscriptionDetails): boolean =>
 
 export const incrementAIUsage = async (userId: string): Promise<boolean> => {
     try {
-        const userRef = doc(db, "users", userId);
-        const snap = await getDoc(userRef);
+        const userRef = db.collection("users").doc(userId);
+        const snap = await userRef.get();
         const data = snap.data() as RestaurantProfile;
         
         if (!data.subscription) return false;
@@ -149,7 +148,7 @@ export const incrementAIUsage = async (userId: string): Promise<boolean> => {
         
         if (currentUsed >= limit) return false;
         
-        await updateDoc(userRef, {
+        await userRef.update({
             "subscription.aiPhotosUsed": currentUsed + 1
         });
         return true;

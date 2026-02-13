@@ -1,5 +1,4 @@
 
-import { collection, getDocs, addDoc, doc, updateDoc, setDoc, query, orderBy, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { RestaurantData, RestaurantProfile } from "../types";
 import { MOCK_RESTAURANTS } from "./mockData";
@@ -8,8 +7,7 @@ const COLLECTION_NAME = "restaurants";
 
 export const getRestaurants = async (): Promise<RestaurantData[]> => {
   try {
-    const q = query(collection(db, COLLECTION_NAME));
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await db.collection(COLLECTION_NAME).get();
     
     return querySnapshot.docs.map(doc => ({
       id: doc.id,
@@ -23,10 +21,10 @@ export const getRestaurants = async (): Promise<RestaurantData[]> => {
 
 export const getRestaurantById = async (id: string): Promise<RestaurantData | null> => {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    const docSnap = await getDoc(docRef);
+    const docRef = db.collection(COLLECTION_NAME).doc(id);
+    const docSnap = await docRef.get();
     
-    if (docSnap.exists()) {
+    if (docSnap.exists) {
       return { id: docSnap.id, ...docSnap.data() } as RestaurantData;
     }
     
@@ -44,7 +42,7 @@ const seedDatabase = async () => {
   // kept for reference or manual admin usage if needed later, but not called automatically
   const promises = MOCK_RESTAURANTS.map(restaurant => {
     const { id, ...data } = restaurant; 
-    return addDoc(collection(db, COLLECTION_NAME), data);
+    return db.collection(COLLECTION_NAME).add(data);
   });
   
   await Promise.all(promises);
@@ -60,14 +58,14 @@ export const updateRestaurantProfile = async (uid: string, data: Partial<Restaur
     );
 
     if (Object.keys(cleanData).length > 0) {
-        const userRef = doc(db, "users", uid);
-        // We use setDoc with merge here to be safe if user doc is missing for some reason, 
-        // though usually updateDoc is fine if we know it exists.
-        await setDoc(userRef, cleanData, { merge: true });
+        const userRef = db.collection("users").doc(uid);
+        // We use set with merge here to be safe if user doc is missing for some reason, 
+        // though usually update is fine if we know it exists.
+        await userRef.set(cleanData, { merge: true });
     }
 
     // 2. Update/Create the Public Restaurant Document (For Home Page Listing)
-    const publicRestaurantRef = doc(db, "restaurants", uid);
+    const publicRestaurantRef = db.collection("restaurants").doc(uid);
     
     const publicData: any = {};
 
@@ -100,7 +98,7 @@ export const updateRestaurantProfile = async (uid: string, data: Partial<Restaur
         // Ensure isOpen is set on creation, but don't overwrite if not passed
         // Since we are merging, existing fields are preserved.
         
-        await setDoc(publicRestaurantRef, publicData, { merge: true });
+        await publicRestaurantRef.set(publicData, { merge: true });
     }
 
     return true;
@@ -112,9 +110,9 @@ export const updateRestaurantProfile = async (uid: string, data: Partial<Restaur
 
 export const getRestaurantProfile = async (uid: string): Promise<RestaurantProfile | null> => {
   try {
-    const docRef = doc(db, "users", uid);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
+    const docRef = db.collection("users").doc(uid);
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
       return docSnap.data() as RestaurantProfile;
     }
     return null;

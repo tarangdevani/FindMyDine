@@ -61,6 +61,14 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
           showToast("Table name is required.", "error");
           return;
       }
+      
+      // Regex: Allow Alphanumeric and Spaces only
+      const nameRegex = /^[a-zA-Z0-9\s]+$/;
+      if (!nameRegex.test(formData.name.trim())) {
+          showToast("Table name cannot contain special characters (letters, numbers, and spaces only).", "error");
+          return;
+      }
+
       if (!formData.area?.trim()) {
           showToast("Area is required.", "error");
           return;
@@ -98,7 +106,15 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
                 
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Name <span className="text-red-500">*</span></label>
-                    <input type="text" required className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-primary-500 outline-none bg-white text-gray-900" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                    <input 
+                      type="text" 
+                      required 
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-primary-500 outline-none bg-white text-gray-900" 
+                      value={formData.name} 
+                      onChange={(e) => setFormData({...formData, name: e.target.value})} 
+                      placeholder="e.g. Table 1"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">Only letters, numbers, and spaces.</p>
                 </div>
                 
                 <div className="relative" ref={areaDropdownRef}>

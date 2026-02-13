@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Loader2, DollarSign, ShoppingBag, Calendar, TrendingUp, RefreshCw } from 'lucide-react';
+import { DollarSign, ShoppingBag, Calendar, TrendingUp, RefreshCw } from 'lucide-react';
 import { getFinancialStats, syncDailyStats } from '../../services/statsService';
 import { DailyStat } from '../../types';
 import { useToast } from '../../context/ToastContext';
 import { Button } from '../UI/Button';
+import { Skeleton } from '../UI/Skeleton';
+import { DatePicker } from '../UI/DatePicker';
 
 interface FinancialStatsProps {
   userId: string;
@@ -19,11 +21,9 @@ const getPath = (points: {x: number, y: number}[], height: number, isArea = fals
   if (points.length === 0) return "";
   
   // Simple straight lines for stability, or basic smoothing
-  // For financial data, slightly smoothed or straight is often better than over-smoothed bezier
   let d = `M ${points[0].x} ${points[0].y}`;
   
   for (let i = 1; i < points.length; i++) {
-     // Bezier control points for smoothing
      const prev = points[i-1];
      const curr = points[i];
      const cp1x = prev.x + (curr.x - prev.x) / 3;
@@ -368,14 +368,7 @@ const AovChart = ({ data, formatDate }: { data: any[], formatDate: (d: string) =
                          )
                     })}
 
-                    {hoverIndex !== null && (
-                        <circle 
-                            cx={linePoints[hoverIndex].x} 
-                            cy={linePoints[hoverIndex].y} 
-                            r={5} 
-                            className="fill-white stroke-emerald-500 stroke-2" 
-                        />
-                    )}
+                    {hoverIndex !== null && <circle cx={linePoints[hoverIndex].x} cy={linePoints[hoverIndex].y} r={5} className="fill-white stroke-emerald-500 stroke-2" />}
 
                     {data.map((d, i) => {
                         const showLabel = data.length < 10 || i % Math.ceil(data.length / 6) === 0;
@@ -496,11 +489,25 @@ export const FinancialStats: React.FC<FinancialStatsProps> = ({ userId }) => {
 
   const formatDateTick = (val: string) => {
       if (granularity === 'monthly') return val;
-      const d = new Date(val);
+      const d = new Date(val + 'T00:00:00');
       return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
 
-  if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary-600" size={32}/></div>;
+  if (isLoading) {
+      return (
+        <div className="animate-fade-in-up pb-10 space-y-8">
+            <Skeleton className="h-20 w-full rounded-2xl" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32 w-full rounded-2xl" />)}
+            </div>
+            <Skeleton className="h-80 w-full rounded-2xl" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <Skeleton className="h-64 w-full rounded-2xl" />
+                <Skeleton className="h-64 w-full rounded-2xl" />
+            </div>
+        </div>
+      );
+  }
 
   return (
     <div className="animate-fade-in-up pb-10 space-y-8">
@@ -513,20 +520,24 @@ export const FinancialStats: React.FC<FinancialStatsProps> = ({ userId }) => {
           </div>
           
           <div className="flex flex-wrap items-center gap-3">
-             <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200">
-                <input 
-                    type="date" 
-                    className="bg-transparent text-sm font-bold text-gray-700 outline-none px-2"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                />
-                <span className="text-gray-400">-</span>
-                <input 
-                    type="date" 
-                    className="bg-transparent text-sm font-bold text-gray-700 outline-none px-2"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                />
+             <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl border border-gray-200">
+                <div className="w-32">
+                    <DatePicker 
+                        value={startDate}
+                        onChange={setStartDate}
+                        max={endDate}
+                        className="border-none bg-transparent"
+                    />
+                </div>
+                <span className="text-gray-400 font-bold">-</span>
+                <div className="w-32">
+                    <DatePicker 
+                        value={endDate}
+                        onChange={setEndDate}
+                        min={startDate}
+                        className="border-none bg-transparent"
+                    />
+                </div>
              </div>
 
              <div className="h-8 w-px bg-gray-200 hidden md:block"></div>
@@ -605,4 +616,3 @@ const StatCard = ({ title, value, icon: Icon, trend }: any) => (
        </div>
     </div>
 );
-    

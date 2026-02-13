@@ -49,7 +49,6 @@ export const TableSelectionPage: React.FC<TableSelectionPageProps> = ({ currentU
   const [date, setDate] = useState(searchParams.get('date') || getTodayString());
   const [startTime, setStartTime] = useState(searchParams.get('start') || getNextHour());
   const [endTime, setEndTime] = useState(searchParams.get('end') || getTwoHoursLater(searchParams.get('start') || getNextHour()));
-  const [guests, setGuests] = useState(parseInt(searchParams.get('guests') || '2'));
 
   const [isReservationMode, setIsReservationMode] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -139,7 +138,7 @@ export const TableSelectionPage: React.FC<TableSelectionPageProps> = ({ currentU
         restaurantId: restaurant.id, restaurantName: restaurant.name, restaurantImage: restaurant.imageUrl,
         userId: currentUser.uid, userName: currentUser.displayName || 'Guest', userEmail: currentUser.email,
         tableId: selectedTable.id!, tableName: selectedTable.name,
-        date, startTime, endTime, guestCount: guests,
+        date, startTime, endTime,
         status: paymentData ? 'confirmed' : 'pending', type: 'reservation',
         createdAt: new Date().toISOString(),
         amountPaid: paymentData ? parseFloat(paymentData.purchase_units[0].amount.value) : 0,
@@ -195,7 +194,6 @@ export const TableSelectionPage: React.FC<TableSelectionPageProps> = ({ currentU
                         <div className="flex gap-4 text-xs font-medium text-gray-600" onClick={() => setShowMobileFilters(true)}>
                             <span>{new Date(date).toLocaleDateString()}</span>
                             <span>{startTime} - {endTime}</span>
-                            <span>{guests} Guests</span>
                         </div>
                     )}
 
@@ -205,7 +203,6 @@ export const TableSelectionPage: React.FC<TableSelectionPageProps> = ({ currentU
                                 date={date} setDate={setDate}
                                 startTime={startTime} setStartTime={setStartTime}
                                 endTime={endTime} setEndTime={setEndTime}
-                                guests={guests} setGuests={setGuests}
                                 minDate={getTodayString()}
                                 compact={true}
                             />
@@ -243,7 +240,7 @@ export const TableSelectionPage: React.FC<TableSelectionPageProps> = ({ currentU
              <BookingSidebar 
                 isReservationMode={isReservationMode} setIsReservationMode={setIsReservationMode}
                 date={date} setDate={setDate} startTime={startTime} setStartTime={setStartTime}
-                endTime={endTime} setEndTime={setEndTime} guests={guests} setGuests={setGuests}
+                endTime={endTime} setEndTime={setEndTime}
                 selectedTable={selectedTable} reservationFee={reservationFee}
                 isBooking={isBooking} onConfirmBooking={handleConfirmBooking} minDate={getTodayString()}
              />

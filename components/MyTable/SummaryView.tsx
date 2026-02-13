@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Star, Utensils, UtensilsCrossed, Edit2, MessageSquarePlus } from 'lucide-react';
+import { Star, Utensils, UtensilsCrossed, Edit2, MessageSquarePlus, PenLine } from 'lucide-react';
 import { RestaurantData, TableItem, OrderItem, Review } from '../../types';
 
 interface SummaryViewProps {
@@ -20,57 +20,52 @@ export const SummaryView: React.FC<SummaryViewProps> = ({
     <div className="p-4 space-y-4 animate-fade-in">
         
         {/* Restaurant Header Card */}
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-start">
-            <div className="flex-1 pr-4">
-                <h2 className="text-xl font-extrabold text-gray-900 leading-tight mb-1">{restaurant.name}</h2>
-                <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-gray-500">
-                    <span className="flex items-center gap-1 text-gray-900 bg-yellow-50 border border-yellow-100 px-2 py-0.5 rounded-lg">
-                        <Star size={10} className="text-yellow-500 fill-current" /> {restaurant.rating}
-                    </span>
-                    <span className="flex items-center gap-1 bg-gray-50 px-2 py-0.5 rounded-lg border border-gray-100">
-                        <Utensils size={10} className="text-gray-400" /> {restaurant.cuisine}
-                    </span>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="p-5 flex justify-between items-start">
+                <div className="flex-1 pr-4">
+                    <h2 className="text-xl font-extrabold text-gray-900 leading-tight mb-1">{restaurant.name}</h2>
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-gray-500">
+                        <span className="flex items-center gap-1 text-gray-900 bg-yellow-50 border border-yellow-100 px-2 py-0.5 rounded-lg">
+                            <Star size={10} className="text-yellow-500 fill-current" /> {restaurant.rating}
+                        </span>
+                        <span className="flex items-center gap-1 bg-gray-50 px-2 py-0.5 rounded-lg border border-gray-100">
+                            <Utensils size={10} className="text-gray-400" /> {restaurant.cuisine}
+                        </span>
+                    </div>
+                </div>
+                <div className="bg-primary-50 text-primary-700 px-3 py-2 rounded-xl text-center border border-primary-100 shadow-sm shrink-0 min-w-[70px]">
+                    <span className="text-[10px] font-bold uppercase text-primary-400 tracking-wider block mb-0.5">Table</span>
+                    <span className="text-xl font-black leading-none">{table.name.replace('Table ', '')}</span>
                 </div>
             </div>
-            <div className="bg-primary-50 text-primary-700 px-3 py-2 rounded-xl text-center border border-primary-100 shadow-sm shrink-0 min-w-[70px]">
-                <span className="text-[10px] font-bold uppercase text-primary-400 tracking-wider block mb-0.5">Table</span>
-                <span className="text-xl font-black leading-none">{table.name.replace('Table ', '')}</span>
+
+            {/* Embedded Review Action */}
+            <div className="bg-gray-50/50 border-t border-gray-100 px-5 py-3 flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Your Rating</span>
+                {userReview ? (
+                    <div className="flex items-center gap-3">
+                        <div className="flex">
+                            {[...Array(5)].map((_, i) => (
+                                <Star key={i} size={12} className={i < userReview.rating ? "text-yellow-400 fill-current" : "text-gray-300 fill-gray-200"} />
+                            ))}
+                        </div>
+                        <button 
+                            onClick={onEditReview}
+                            className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                        >
+                            <PenLine size={12}/> Edit
+                        </button>
+                    </div>
+                ) : (
+                    <button 
+                        onClick={onAddReview}
+                        className="text-xs font-bold text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                    >
+                        <MessageSquarePlus size={14}/> Rate Experience
+                    </button>
+                )}
             </div>
         </div>
-
-        {/* My Review Section */}
-        {userReview ? (
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-2xl border border-blue-100 flex justify-between items-center shadow-sm">
-               <div className="flex-1 min-w-0 pr-4">
-                  <div className="flex items-center gap-2 mb-1">
-                     <span className="text-xs font-bold text-blue-600 uppercase tracking-wide">Your Review</span>
-                     <div className="flex">
-                        {[...Array(5)].map((_, i) => (
-                           <Star key={i} size={10} className={i < userReview.rating ? "text-yellow-400 fill-current" : "text-gray-300 fill-gray-200"} />
-                        ))}
-                     </div>
-                  </div>
-                  <p className="text-sm text-gray-700 font-medium truncate italic">"{userReview.comment}"</p>
-               </div>
-               <button 
-                 onClick={onEditReview}
-                 className="p-2 bg-white rounded-xl shadow-sm text-blue-600 hover:text-blue-800 hover:shadow-md transition-all shrink-0"
-                 title="Edit Review"
-               >
-                 <Edit2 size={16} />
-               </button>
-            </div>
-        ) : (
-            <button 
-              onClick={onAddReview}
-              className="w-full bg-white p-4 rounded-2xl border border-dashed border-gray-300 hover:border-primary-300 hover:bg-primary-50 transition-all flex items-center justify-center gap-2 text-gray-500 hover:text-primary-600 group"
-            >
-               <div className="w-8 h-8 rounded-full bg-gray-100 group-hover:bg-white flex items-center justify-center transition-colors">
-                  <MessageSquarePlus size={16} />
-               </div>
-               <span className="font-bold text-sm">Rate Your Experience</span>
-            </button>
-        )}
 
         <div>
             <h3 className="font-bold text-gray-900 text-lg mb-3 pl-1">Ordered Items</h3>

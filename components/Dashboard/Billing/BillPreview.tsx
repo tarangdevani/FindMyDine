@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
-import { Printer, CheckCircle, Tag, Store, CreditCard, Share2 } from 'lucide-react';
+import { Printer, CheckCircle, Share2, Receipt } from 'lucide-react';
 import { Order, Reservation, BillingConfig } from '../../../types';
-import { calculateBill } from '../../../utils/billing';
 import { Button } from '../../UI/Button';
+import { BillReceipt } from '../../Shared/BillReceipt';
 
 interface BillPreviewProps {
   order: Order;
@@ -18,54 +18,9 @@ type PrintSize = 'small' | 'medium' | 'large';
 export const BillPreview: React.FC<BillPreviewProps> = ({ order, reservation, billingConfig, onMarkPaid, isProcessing }) => {
   const [printSize, setPrintSize] = useState<PrintSize>('small');
   
-  // Use saved snapshot if available for historical accuracy
-  let displayDetails;
-
-  if (order.billDetails) {
-      // Historical Data found
-      displayDetails = {
-          menuSubtotal: order.billDetails.subtotal,
-          serviceChargeAmount: order.billDetails.serviceCharge,
-          taxAmount: order.billDetails.tax,
-          totalDiscount: order.billDetails.discount,
-          grandTotal: order.billDetails.grandTotal,
-          activeItems: order.items,
-          discountDesc: order.billDetails.discountDetails
-      };
-  } else {
-      // Live Calculation (Legacy orders or live sessions)
-      const calculation = calculateBill(order.items, billingConfig, order.customDiscount);
-      
-      // Calculate Total Discount: Manual + Offer
-      let totalDiscount = calculation.customDiscountAmount;
-      let discountDesc = order.customDiscount ? 'Manual Adjustment' : '';
-      
-      // If discount was applied during request, add it here
-      if (order.appliedDiscountAmount) {
-          totalDiscount += order.appliedDiscountAmount;
-          discountDesc = discountDesc ? `${discountDesc}, Offer Applied` : 'Offer Applied';
-      }
-
-      // Grand Total Calculation:
-      // calculateBill.grandTotal already subtracts manual discount. 
-      // We must subtract the offer discount (appliedDiscountAmount) as well.
-      const liveGrandTotal = Math.max(0, calculation.grandTotal - (order.appliedDiscountAmount || 0));
-
-      displayDetails = {
-          menuSubtotal: calculation.menuSubtotal,
-          serviceChargeAmount: calculation.serviceChargeAmount,
-          taxAmount: calculation.taxAmount,
-          totalDiscount: totalDiscount,
-          grandTotal: liveGrandTotal,
-          activeItems: calculation.activeItems,
-          discountDesc
-      };
-  }
-
   // Platform fee logic (visual only if online)
   const isOnline = reservation?.paymentMethod === 'online';
-  const platformFee = isOnline ? displayDetails.grandTotal * 0.03 : 0; // 3% fee visual
-  const finalTotal = displayDetails.grandTotal + platformFee;
+  const platformFeeRate = isOnline ? 0.03 : 0; 
 
   const handlePrint = () => {
     const printContent = document.getElementById('receipt-content')?.innerHTML;
@@ -108,23 +63,21 @@ export const BillPreview: React.FC<BillPreviewProps> = ({ order, reservation, bi
                 .meta span.label { font-size: 0.8em; color: #888; text-transform: uppercase; }
                 .meta span.value { font-weight: bold; }
 
-                .items { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-                .items th { text-align: left; border-bottom: 1px solid #000; padding: 5px 0; font-weight: normal; color: #888; }
-                .items td { padding: 5px 0; vertical-align: top; }
-                .items .price { text-align: right; font-weight: bold; }
-                
-                .totals { border-top: 1px dashed #000; padding-top: 10px; }
-                .totals .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
-                .totals .grand-total { font-size: 1.4em; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 8px 0; margin-top: 8px; }
-                .discount { color: #000; font-style: italic; }
-                .footer { text-align: center; font-size: 0.9em; margin-top: 30px; color: #555; }
-                
                 /* Hide UI elements that shouldn't print */
                 .no-print { display: none !important; }
+                
+                /* Ensure BillReceipt styles work in print */
+                .flex { display: flex; }
+                .justify-between { justify-content: space-between; }
+                .text-right { text-align: right; }
+                .font-bold { font-weight: bold; }
+                .border-b { border-bottom: 1px solid #eee; }
+                .border-dashed { border-style: dashed; }
+                .pt-4 { padding-top: 1rem; }
+                .mt-2 { margin-top: 0.5rem; }
             </style>
         `);
         win.document.write('</head><body>');
-        // We use the same content but apply the dynamic CSS class constraints
         win.document.write(`<div class="receipt-container">${printContent}</div>`);
         win.document.write('<script>window.onload = function() { window.print(); window.close(); }</script>');
         win.document.write('</body></html>');
@@ -192,86 +145,20 @@ export const BillPreview: React.FC<BillPreviewProps> = ({ order, reservation, bi
                    </div>
                 </div>
 
-                {/* Items List */}
-                <div className="mb-6">
-                   <table className="items w-full text-xs font-mono">
-                      <thead>
-                         <tr className="text-gray-400 border-b border-gray-200">
-                            <th className="text-left pb-2 font-normal">Qty</th>
-                            <th className="text-left pb-2 font-normal">Item</th>
-                            <th className="text-right pb-2 font-normal">Amt</th>
-                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-dashed divide-gray-100">
-                         {displayDetails.activeItems.map((item, i) => (
-                            <tr key={i}>
-                               <td className="py-2 w-8 font-bold align-top">{item.quantity}</td>
-                               <td className="py-2 align-top">
-                                  <span className="block text-gray-900 font-medium">{item.name}</span>
-                                  {item.selectedAddOns && item.selectedAddOns.length > 0 && (
-                                     <div className="mt-1">
-                                        {item.selectedAddOns.map((addon, j) => (
-                                            <span key={j} className="block text-[10px] text-gray-500">+ {addon.name}</span>
-                                        ))}
-                                     </div>
-                                  )}
-                               </td>
-                               <td className="price py-2 text-right text-gray-900 font-medium align-top">
-                                  ${((item.price + (item.selectedAddOns?.reduce((s, a) => s + a.price, 0) || 0)) * item.quantity).toFixed(2)}
-                               </td>
-                            </tr>
-                         ))}
-                      </tbody>
-                   </table>
-                </div>
-
-                {/* Totals Breakdown */}
-                <div className="totals space-y-2 text-xs font-mono border-t border-dashed border-gray-300 pt-4">
-                   <div className="row flex justify-between text-gray-600">
-                      <span>Subtotal</span>
-                      <span>${displayDetails.menuSubtotal.toFixed(2)}</span>
-                   </div>
-                   
-                   {displayDetails.serviceChargeAmount > 0 && (
-                       <div className="row flex justify-between text-gray-600">
-                          <span>Service Charge ({billingConfig.serviceChargeRate}%)</span>
-                          <span>${displayDetails.serviceChargeAmount.toFixed(2)}</span>
-                       </div>
-                   )}
-                   
-                   <div className="row flex justify-between text-gray-600">
-                      <span>Tax ({billingConfig.salesTaxRate}%)</span>
-                      <span>${displayDetails.taxAmount.toFixed(2)}</span>
-                   </div>
-
-                   {/* Discount Section */}
-                   {displayDetails.totalDiscount > 0 && (
-                      <div className="row flex justify-between text-green-700 font-bold bg-green-50/50 p-1 -mx-1 rounded">
-                         <span className="flex items-center gap-1">
-                            <Tag size={10} className="fill-current"/> Discount
-                         </span>
-                         <span>-${displayDetails.totalDiscount.toFixed(2)}</span>
-                      </div>
-                   )}
-                   {/* Explicitly List Discount Reasons if Available */}
-                   {displayDetails.discountDesc && (
-                       <div className="row text-[10px] text-green-600 text-right italic -mt-1 pb-1 justify-end">
-                           ({displayDetails.discountDesc})
-                       </div>
-                   )}
-
-                   {isOnline && (
-                     <div className="row flex justify-between text-gray-500 italic">
-                        <span>Platform Fee (3%)</span>
-                        <span>${platformFee.toFixed(2)}</span>
-                     </div>
-                   )}
-
-                   <div className="grand-total flex justify-between text-lg font-black text-gray-900 border-t-2 border-gray-900 pt-3 mt-2">
-                      <span>TOTAL</span>
-                      <span>${finalTotal.toFixed(2)}</span>
-                   </div>
-                </div>
+                {/* Bill Content via Shared Component */}
+                <BillReceipt 
+                    items={order.items}
+                    billingConfig={billingConfig}
+                    billDetails={order.billDetails}
+                    customDiscount={order.customDiscount}
+                    offerDiscount={order.appliedDiscountAmount}
+                    platformFeeRate={platformFeeRate}
+                    // For discount description in live mode
+                    discountDescription={[
+                        order.customDiscount ? 'Manual' : '',
+                        order.appliedOfferId ? 'Offer Applied' : ''
+                    ].filter(Boolean).join(', ')}
+                />
 
                 {/* Footer */}
                 <div className="footer mt-8 text-center">
@@ -297,7 +184,7 @@ export const BillPreview: React.FC<BillPreviewProps> = ({ order, reservation, bi
           {reservation?.paymentStatus === 'pending_counter' ? (
              <div className="space-y-3">
                 <div className="flex items-center gap-2 text-sm text-orange-600 bg-orange-50 p-3 rounded-lg border border-orange-100 mb-2">
-                    <Store size={16}/>
+                    <Receipt size={16}/>
                     <span className="font-bold">Payment requested at counter.</span>
                 </div>
                 <Button fullWidth onClick={onMarkPaid} isLoading={isProcessing} className="bg-gray-900 text-white shadow-xl h-12 text-sm">

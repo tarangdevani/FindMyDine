@@ -1,8 +1,9 @@
 
 import React from 'react';
-import { Calendar, Loader2 } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { Reservation, ReservationStatus, ReservationConfig } from '../../../types';
 import { ReservationCard } from './ReservationCard';
+import { Skeleton } from '../../UI/Skeleton';
 
 interface ReservationListProps {
   reservations: Reservation[];
@@ -18,8 +19,10 @@ export const ReservationList: React.FC<ReservationListProps> = ({
 }) => {
   if (isLoading) {
     return (
-       <div className="flex justify-center py-20">
-          <Loader2 className="animate-spin text-primary-600" size={32} />
+       <div className="grid grid-cols-1 gap-4">
+          {[...Array(4)].map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-2xl" />
+          ))}
        </div>
     );
   }

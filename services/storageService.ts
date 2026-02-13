@@ -1,5 +1,4 @@
 
-import { ref, deleteObject } from "firebase/storage";
 import { storage } from "../lib/firebase";
 
 /**
@@ -15,9 +14,9 @@ export const deleteFileFromUrl = async (url: string | undefined | null) => {
   }
 
   try {
-    // ref() can create a reference directly from the full HTTPS URL
-    const fileRef = ref(storage, url);
-    await deleteObject(fileRef);
+    // storage.refFromURL() is a v8 convenience method
+    const fileRef = storage.refFromURL(url);
+    await fileRef.delete();
     console.log("Old file deleted from storage");
   } catch (error: any) {
     // If the object is not found (404), it might have already been deleted. 

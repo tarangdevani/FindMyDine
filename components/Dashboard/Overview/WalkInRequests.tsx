@@ -27,7 +27,7 @@ export const WalkInRequests: React.FC<WalkInRequestsProps> = ({ requests, onActi
                 <div className="flex justify-between items-start mb-2">
                    <div>
                        <p className="font-bold text-gray-900 text-lg">{req.tableName}</p>
-                       <p className="text-xs text-gray-500 flex items-center gap-1"><User size={12}/> {req.userName} • {req.guestCount} Guests</p>
+                       <p className="text-xs text-gray-500 flex items-center gap-1"><User size={12}/> {req.userName}</p>
                    </div>
                    <span className="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-1 rounded">WAITING</span>
                 </div>

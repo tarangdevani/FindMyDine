@@ -1,13 +1,12 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Calendar, Users, Clock, ChevronDown, X } from 'lucide-react';
+import { Calendar, Clock, ChevronDown, X } from 'lucide-react';
 import { CalendarPicker, TimePicker } from './DateTimePickers';
 
 interface BookingInputsProps {
   date: string; setDate: (v: string) => void;
   startTime: string; setStartTime: (v: string) => void;
   endTime: string; setEndTime: (v: string) => void;
-  guests: number; setGuests: (v: number) => void;
   minDate: string;
   className?: string;
   compact?: boolean;
@@ -40,7 +39,7 @@ const PickerContainer: React.FC<PickerContainerProps> = ({ children, title, onCl
 );
 
 export const BookingInputs: React.FC<BookingInputsProps> = ({
-  date, setDate, startTime, setStartTime, endTime, setEndTime, guests, setGuests, minDate, className = '', compact = false
+  date, setDate, startTime, setStartTime, endTime, setEndTime, minDate, className = '', compact = false
 }) => {
   const [activePicker, setActivePicker] = useState<'date' | 'start' | 'end' | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -138,23 +137,6 @@ export const BookingInputs: React.FC<BookingInputsProps> = ({
                         />
                     </PickerContainer>
                 )}
-            </div>
-        </div>
-
-        {/* Guests Input */}
-        <div className={compact ? "col-span-2" : ""}>
-            <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5 ml-1">Guests</label>
-            <div className="relative">
-                <Users className="absolute left-3 top-3 text-gray-400" size={16} />
-                <input 
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={guests}
-                    onChange={(e) => setGuests(parseInt(e.target.value) || 0)}
-                    className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-gray-200 bg-white hover:border-primary-300 focus:border-primary-500 outline-none font-bold text-sm text-gray-900 transition-all placeholder-gray-400"
-                    placeholder="2"
-                />
             </div>
         </div>
       </div>

@@ -6,8 +6,9 @@ import { MenuItem, FoodCategory, FoodAddOn } from '../../types';
 import { getMenu, getCategories, addMenuItem, updateMenuItem, deleteMenuItem, addCategory, getGlobalAddOns, addGlobalAddOn } from '../../services/menuService';
 import { deleteFileFromUrl } from '../../services/storageService';
 import { storage } from '../../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from '../../context/ToastContext';
+import { Skeleton } from '../UI/Skeleton';
+import { compressImage } from '../../utils/imageCompression';
 
 // Child Components
 import { MenuItemCard } from './Menu/MenuItemCard';
@@ -116,9 +117,15 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({ userId, isReadOn
 
   // --- Image Handling ---
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+      let file = e.target.files[0];
+      try {
+          showToast("Optimizing image...", "info");
+          file = await compressImage(file);
+      } catch (error) {
+          console.error("Compression skipped:", error);
+      }
       setImageFile(file);
       setPreviewUrl(URL.createObjectURL(file));
     }
@@ -199,9 +206,9 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({ userId, isReadOn
             await deleteFileFromUrl(editingItem.imageUrl);
         }
 
-        const storageRef = ref(storage, `menu-items/${userId}/${Date.now()}_${imageFile.name}`);
-        await uploadBytes(storageRef, imageFile);
-        finalImageUrl = await getDownloadURL(storageRef);
+        const storageRef = storage.ref(`menu-items/${userId}/${Date.now()}_${imageFile.name}`);
+        const snapshot = await storageRef.put(imageFile);
+        finalImageUrl = await snapshot.ref.getDownloadURL();
       }
 
       const selectedCat = categories.find(c => c.id === formData.categoryId);
@@ -297,8 +304,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({ userId, isReadOn
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-12">
-           <Loader2 className="animate-spin text-primary-500" size={32} />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+           {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-80 w-full rounded-2xl" />)}
         </div>
       ) : items.length === 0 ? (
         <div className="bg-white rounded-2xl shadow-soft border border-gray-100 p-12 text-center">

@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Mail, CheckCircle, Ban, Trash2, X, Lock } from 'lucide-react';
+import { Users, Plus, Mail, CheckCircle, Ban, Trash2, X, Lock, AlertCircle } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { UserProfile } from '../../types';
 import { getStaffMembers, inviteStaffMember, updateStaffPermissions, toggleStaffBlock, removeStaff } from '../../services/staffService';
 import { useToast } from '../../context/ToastContext';
 import { Checkbox } from '../UI/Checkbox';
+import { Skeleton } from '../UI/Skeleton';
 
 interface StaffManagementProps {
   userId: string;
@@ -32,6 +33,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ userId }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [staffToDelete, setStaffToDelete] = useState<UserProfile | null>(null);
 
   // Form State
   const [editingStaff, setEditingStaff] = useState<UserProfile | null>(null);
@@ -94,13 +96,13 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ userId }) => {
         // Update permissions only
         await updateStaffPermissions(editingStaff.uid, formData.permissions);
         setStaff(prev => prev.map(s => s.uid === editingStaff.uid ? { ...s, permissions: formData.permissions } : s));
-        showToast("Permissions updated.", "success");
+        showToast("Permissions updated & notified.", "success");
       } else {
         // Invite new
         const result = await inviteStaffMember(userId, formData.email, formData.name, formData.permissions);
         if (result.success && result.newUser) {
           setStaff(prev => [...prev, result.newUser!]);
-          showToast(result.message, "success");
+          showToast("Invitation email sent successfully.", "success");
         } else {
           showToast(result.message, "error");
         }
@@ -116,20 +118,37 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ userId }) => {
 
   const handleBlockToggle = async (s: UserProfile) => {
     const newStatus = !s.isStaffBlocked;
+    // Optimistic UI Update
+    setStaff(prev => prev.map(u => u.uid === s.uid ? { ...u, isStaffBlocked: newStatus } : u));
+    
     const success = await toggleStaffBlock(s.uid, newStatus);
     if (success) {
-      setStaff(prev => prev.map(u => u.uid === s.uid ? { ...u, isStaffBlocked: newStatus } : u));
-      showToast(`Staff member ${newStatus ? 'blocked' : 'unblocked'}.`, "info");
+      showToast(`Staff member ${newStatus ? 'blocked' : 'unblocked'}. Email sent.`, "info");
+    } else {
+      // Revert if failed
+      setStaff(prev => prev.map(u => u.uid === s.uid ? { ...u, isStaffBlocked: !newStatus } : u));
+      showToast("Failed to update status.", "error");
     }
   };
 
-  const handleRemove = async (s: UserProfile) => {
-    if (!confirm(`Are you sure you want to remove ${s.displayName}? They will lose all access.`)) return;
+  const confirmRemove = async () => {
+    if (!staffToDelete) return;
+    
+    const s = staffToDelete;
+    
+    // Optimistic Remove
+    const previousStaff = [...staff];
+    setStaff(prev => prev.filter(u => u.uid !== s.uid));
+
     const success = await removeStaff(s.uid);
     if (success) {
-      setStaff(prev => prev.filter(u => u.uid !== s.uid));
-      showToast("Staff member removed.", "success");
+      showToast("Staff member removed & notified.", "success");
+    } else {
+      // Revert
+      setStaff(previousStaff);
+      showToast("Failed to remove staff member.", "error");
     }
+    setStaffToDelete(null);
   };
 
   return (
@@ -145,7 +164,9 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ userId }) => {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-20 text-gray-400">Loading team...</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-40 w-full rounded-2xl" />)}
+        </div>
       ) : staff.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
@@ -199,12 +220,31 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ userId }) => {
                    <button onClick={() => handleBlockToggle(s)} className={`p-2 rounded-lg border transition-colors ${s.isStaffBlocked ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-orange-600 border-gray-200 hover:bg-orange-50'}`} title={s.isStaffBlocked ? "Unblock" : "Block Access"}>
                       <Ban size={16} />
                    </button>
-                   <button onClick={() => handleRemove(s)} className="p-2 bg-white text-red-500 border border-gray-200 rounded-lg hover:bg-red-50 hover:border-red-200 transition-colors" title="Remove Staff">
+                   <button onClick={() => setStaffToDelete(s)} className="p-2 bg-white text-red-500 border border-gray-200 rounded-lg hover:bg-red-50 hover:border-red-200 transition-colors" title="Remove Staff">
                       <Trash2 size={16} />
                    </button>
                 </div>
              </div>
            ))}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {staffToDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm" onClick={() => setStaffToDelete(null)}>
+           <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
+              <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-4 text-red-600 mx-auto">
+                 <AlertCircle size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2 text-center">Remove Staff?</h3>
+              <p className="text-gray-500 mb-6 text-sm text-center">
+                Are you sure you want to remove <strong>{staffToDelete.displayName}</strong>? They will lose all access immediately.
+              </p>
+              <div className="flex gap-3">
+                 <Button variant="ghost" fullWidth onClick={() => setStaffToDelete(null)}>Cancel</Button>
+                 <Button fullWidth onClick={confirmRemove} className="bg-red-600 hover:bg-red-700 text-white shadow-red-500/20">Remove</Button>
+              </div>
+           </div>
         </div>
       )}
 

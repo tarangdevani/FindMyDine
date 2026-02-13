@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, Store, Users, DollarSign, LogOut, ShieldCheck
 } from 'lucide-react';
@@ -15,22 +16,26 @@ interface AdminSidebarProps {
 }
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({ 
-  activeView, setActiveView, user, onLogoutClick 
+  user, onLogoutClick 
 }) => {
 
-  const NavItem = ({ view, icon: Icon, label }: { view: AdminView, icon: any, label: string }) => (
-    <button 
-      onClick={() => setActiveView(view)}
-      className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all mb-1
-        ${activeView === view 
-          ? 'bg-slate-800 text-white shadow-lg shadow-slate-900/20' 
-          : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-        }`}
-    >
-      <Icon size={20} className="shrink-0" />
-      <span className="ml-3">{label}</span>
-    </button>
-  );
+  const NavItem = ({ view, icon: Icon, label }: { view: string, icon: any, label: string }) => {
+    const linkPath = view === 'overview' ? '/admin' : `/admin/${view}`;
+    return (
+      <NavLink 
+        to={linkPath}
+        end={view === 'overview'}
+        className={({ isActive }) => `w-full flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all mb-1
+          ${isActive 
+            ? 'bg-slate-800 text-white shadow-lg shadow-slate-900/20' 
+            : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+          }`}
+      >
+        <Icon size={20} className="shrink-0" />
+        <span className="ml-3">{label}</span>
+      </NavLink>
+    );
+  };
 
   return (
     <aside className="w-64 bg-slate-900 text-white flex flex-col h-screen fixed left-0 top-0 z-30">

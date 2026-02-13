@@ -6,6 +6,7 @@ import { useToast } from '../../context/ToastContext';
 import { PHOTOGRAPHY_STYLES } from './AIPhotography/constants';
 import { incrementAIUsage } from '../../services/subscriptionService';
 import { getRestaurantProfile } from '../../services/restaurantService';
+import { compressImage } from '../../utils/imageCompression';
 
 // Child Components
 import { SourceImage } from './AIPhotography/SourceImage';
@@ -49,9 +50,16 @@ export const AIPhotography: React.FC<AIPhotographyProps> = ({ userId }) => {
     });
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+      let file = e.target.files[0];
+      try {
+          showToast("Optimizing for AI...", "info");
+          // Moderate compression for AI to keep detail but reduce upload size
+          file = await compressImage(file, 0.8, 1200);
+      } catch (error) {
+          console.error("Compression skipped:", error);
+      }
       setImageFile(file);
       setPreviewUrl(URL.createObjectURL(file));
       setGeneratedImage(null); // Reset result

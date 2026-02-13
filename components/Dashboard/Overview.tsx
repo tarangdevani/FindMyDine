@@ -1,8 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
 import { Reservation, TableItem, Order, MenuItem, OrderStatus } from '../../types';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDocs } from "firebase/firestore";
 import { db } from '../../lib/firebase';
 import { updateTable, getTables } from '../../services/tableService';
 import { completeReservation } from '../../services/reservationService';
@@ -11,6 +9,7 @@ import { getRestaurantProfile } from '../../services/restaurantService';
 import { getMenu } from '../../services/menuService';
 import { DashboardView } from './Sidebar';
 import { useToast } from '../../context/ToastContext';
+import { Skeleton } from '../UI/Skeleton';
 
 // Child Components
 import { SetupWarnings } from './Overview/SetupWarnings';
@@ -26,7 +25,10 @@ interface OverviewProps {
 
 export const Overview: React.FC<OverviewProps> = ({ userId, onViewChange }) => {
     const { showToast } = useToast();
-    const [loading, setLoading] = useState(true);
+    
+    // Loading States
+    const [isMinTimeElapsed, setIsMinTimeElapsed] = useState(false);
+    const [isDataLoaded, setIsDataLoaded] = useState(false);
     
     // Real-time Data
     const [liveRequests, setLiveRequests] = useState<Reservation[]>([]);
@@ -38,7 +40,15 @@ export const Overview: React.FC<OverviewProps> = ({ userId, onViewChange }) => {
     const [menuCount, setMenuCount] = useState(0);
     const [profileCompleted, setProfileCompleted] = useState(true);
 
-    // Initial Data Load (One-time checks)
+    // 1. Force Minimum Loading Time (1s)
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setIsMinTimeElapsed(true);
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, []);
+
+    // 2. Initial Data Load (One-time checks)
     useEffect(() => {
         const initChecks = async () => {
             try {
@@ -57,47 +67,46 @@ export const Overview: React.FC<OverviewProps> = ({ userId, onViewChange }) => {
         initChecks();
     }, [userId]);
     
-    // Real-time Listeners
+    // 3. Real-time Listeners
     useEffect(() => {
-        // 1. Listen for Reservations (Requests & Payments)
-        const qLive = query(
-            collection(db, "reservations"), 
-            where("restaurantId", "==", userId), 
-            where("status", "in", ["pending", "active", "completed"])
-        );
-        const unsubRequests = onSnapshot(qLive, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Reservation));
-            // Requests: Pending + Walk-in
-            setLiveRequests(data.filter(r => r.status === 'pending' && r.type === 'walk_in'));
-            // Payments: Pending Counter + Not Completed/Paid yet
-            setPendingPayments(data.filter(r => r.paymentStatus === 'pending_counter' && r.status !== 'completed'));
-            setLoading(false);
-        });
+        // Listen for Reservations (Requests & Payments)
+        const unsubscribeRequests = db.collection("reservations")
+            .where("restaurantId", "==", userId)
+            .where("status", "in", ["pending", "active", "completed"])
+            .onSnapshot((snapshot) => {
+                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Reservation));
+                // Requests: Pending + Walk-in
+                setLiveRequests(data.filter(r => r.status === 'pending' && r.type === 'walk_in'));
+                // Payments: Pending Counter + Not Completed/Paid yet
+                setPendingPayments(data.filter(r => r.paymentStatus === 'pending_counter' && r.status !== 'completed'));
+                
+                // Mark data as loaded
+                setIsDataLoaded(true);
+            });
 
-        // 2. Listen for Tables
-        const qTables = query(collection(db, "users", userId, "tables"), orderBy("createdAt"));
-        const unsubTables = onSnapshot(qTables, (snapshot) => {
-            const tData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TableItem));
-            // Sort numerically if possible
-            tData.sort((a, b) => parseInt(a.name.replace(/\D/g, '')) - parseInt(b.name.replace(/\D/g, '')));
-            setTables(tData);
-        });
+        // Listen for Tables
+        const unsubscribeTables = db.collection("users").doc(userId).collection("tables")
+            .orderBy("createdAt")
+            .onSnapshot((snapshot) => {
+                const tData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TableItem));
+                // Sort numerically if possible
+                tData.sort((a, b) => parseInt(a.name.replace(/\D/g, '')) - parseInt(b.name.replace(/\D/g, '')));
+                setTables(tData);
+            });
 
-        // 3. Listen for Orders (Live Kitchen)
-        const qOrders = query(
-            collection(db, "orders"), 
-            where("restaurantId", "==", userId),
-            orderBy("createdAt", "desc")
-        );
-        const unsubOrders = onSnapshot(qOrders, (snapshot) => {
-            const oData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-            setOrders(oData);
-        });
+        // Listen for Orders (Live Kitchen)
+        const unsubscribeOrders = db.collection("orders")
+            .where("restaurantId", "==", userId)
+            .orderBy("createdAt", "desc")
+            .onSnapshot((snapshot) => {
+                const oData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+                setOrders(oData);
+            });
 
         return () => {
-            unsubRequests();
-            unsubTables();
-            unsubOrders();
+            unsubscribeRequests();
+            unsubscribeTables();
+            unsubscribeOrders();
         };
     }, [userId]);
 
@@ -126,12 +135,12 @@ export const Overview: React.FC<OverviewProps> = ({ userId, onViewChange }) => {
         if (!reservation.id) return;
         const status = action === 'confirm' ? 'active' : 'declined';
         
-        await updateDoc(doc(db, "reservations", reservation.id), { status });
+        await db.collection("reservations").doc(reservation.id).update({ status });
 
         // If confirming, auto-occupy the table
         if (action === 'confirm' && reservation.tableId) {
-            const tableRef = doc(db, "users", userId, "tables", reservation.tableId);
-            await updateDoc(tableRef, { status: 'occupied' });
+            const tableRef = db.collection("users").doc(userId).collection("tables").doc(reservation.tableId);
+            await tableRef.update({ status: 'occupied' });
             showToast(`${reservation.tableName} is now active.`, "success");
         }
     };
@@ -155,7 +164,34 @@ export const Overview: React.FC<OverviewProps> = ({ userId, onViewChange }) => {
             .filter(k => ['ordered', 'preparing', 'served'].includes(k.item.status || 'ordered'))
     );
 
-    if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary-600" size={32} /></div>;
+    // Combined Loading Check
+    const isLoading = !isMinTimeElapsed || !isDataLoaded;
+
+    if (isLoading) {
+        return (
+            <div className="animate-fade-in-up space-y-8 pb-10">
+                {/* Setup Warning Skeleton */}
+                <Skeleton className="h-28 w-full rounded-2xl" />
+                
+                {/* Requests Skeleton */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <Skeleton className="h-80 w-full rounded-2xl" />
+                    <Skeleton className="h-80 w-full rounded-2xl" />
+                </div>
+
+                {/* Kitchen Skeleton */}
+                <Skeleton className="h-64 w-full rounded-2xl" />
+
+                {/* Tables Skeleton */}
+                <div>
+                    <Skeleton className="h-6 w-32 mb-4" variant="text" />
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-32 w-full rounded-2xl" />)}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
       <div className="animate-fade-in-up space-y-8 pb-10">

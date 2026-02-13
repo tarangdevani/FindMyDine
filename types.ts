@@ -54,7 +54,6 @@ export interface Reservation {
   date: string; // YYYY-MM-DD
   startTime: string; // HH:mm
   endTime: string; // HH:mm
-  guestCount: number;
   status: ReservationStatus;
   type: 'reservation' | 'walk_in';
   createdAt: string;

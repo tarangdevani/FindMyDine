@@ -1,16 +1,17 @@
 
 import React from 'react';
-import { Store, CreditCard, Gift, ChevronRight, Tag, AlertCircle } from 'lucide-react';
+import { Store, CreditCard, Gift, ChevronRight, Tag } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { RestaurantData, TableItem, OrderItem, Offer, BillingConfig } from '../../types';
-import { BillBreakdown } from '../../utils/billing';
+import { BillBreakdown, calculateBill } from '../../utils/billing';
 import { RazorpayButton } from '../UI/RazorpayButton';
+import { BillReceipt } from '../Shared/BillReceipt';
 
 interface BillViewProps {
   restaurant: RestaurantData;
   table: TableItem;
   items: { key: string; item: OrderItem; quantity: number }[];
-  breakdown: BillBreakdown;
+  breakdown: BillBreakdown; // We can use this or let BillReceipt calculate. Using passed props for consistency with parent logic if any.
   billingConfig: BillingConfig;
   offerDiscount: number;
   couponDiscount: number;
@@ -37,14 +38,14 @@ export const BillView: React.FC<BillViewProps> = ({
   bestPublicOffer, appliedCoupon, couponCode, setCouponCode, onApplyCoupon, onRemoveCoupon, couponError, onOpenOffers, isAwaitingCounter
 }) => {
   
-  const { menuSubtotal, serviceChargeAmount, taxableAmount, taxAmount, grandTotal: rawGrandTotal } = breakdown;
-  
+  // Reconstruct flat item list for BillReceipt from grouped items
+  const flatItems = items.map(g => ({ ...g.item, quantity: g.quantity }));
+
+  // Calculate final total locally for the Pay Button (BillReceipt handles display)
+  const rawTotal = calculateBill(flatItems, billingConfig);
   const totalDiscount = offerDiscount + couponDiscount;
-  const netAmount = Math.max(0, rawGrandTotal - totalDiscount);
-  
-  // Platform Fee changed to 3%
+  const netAmount = Math.max(0, rawTotal.grandTotal - totalDiscount);
   const platformFee = paymentMethod === 'online' ? netAmount * 0.03 : 0;
-  
   const finalTotal = netAmount + platformFee;
 
   return (
@@ -75,86 +76,21 @@ export const BillView: React.FC<BillViewProps> = ({
                 </button>
             </div>
 
-            {/* Bill Items */}
-            <div className="flex-1 overflow-y-auto space-y-3 mb-6 bg-gray-50/50 p-4 rounded-xl border border-gray-100">
-                {items.map((entry, i) => {
-                    const { item, quantity } = entry;
-                    const itemTotal = (item.price + (item.selectedAddOns?.reduce((s,a) => s+a.price, 0) || 0)) * quantity;
-                    return (
-                        <div key={i} className="flex justify-between items-start text-sm border-b border-dashed border-gray-200 pb-2 last:border-0">
-                            <div className="flex gap-3">
-                                <span className="font-bold text-gray-900 w-6">{quantity}x</span>
-                                <div>
-                                    <span className="text-gray-700 block">{item.name}</span>
-                                    {item.selectedAddOns && item.selectedAddOns.length > 0 && (
-                                        <div className="text-[10px] text-gray-400 flex flex-wrap gap-1 mt-0.5">
-                                            {item.selectedAddOns.map((addon, j) => (
-                                                <span key={j}>+ {addon.name}</span>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                            <span className="text-gray-900 font-medium">${itemTotal.toFixed(2)}</span>
-                        </div>
-                    );
-                })}
-            </div>
-
-            {/* Structured Totals as per Request */}
-            <div className="border-t border-dashed border-gray-300 pt-4 space-y-3">
-                
-                {/* 1. Menu Subtotal */}
-                <div className="flex justify-between text-sm text-gray-600">
-                    <span>Menu Subtotal</span>
-                    <span className="font-medium">${menuSubtotal.toFixed(2)}</span>
-                </div>
-
-                {/* 2. Service Charge */}
-                <div className="flex justify-between text-sm text-gray-600">
-                    <span className="flex items-center gap-1">
-                        Service Charge ({billingConfig.serviceChargeRate}%)
-                        {billingConfig.isServiceChargeInclusive && <span className="text-[10px] bg-gray-100 px-1 rounded text-gray-500">Incl.</span>}
-                    </span>
-                    <span className="font-medium">+ ${serviceChargeAmount.toFixed(2)}</span>
-                </div>
-
-                {/* 3. Taxable Amount */}
-                <div className="flex justify-between text-sm text-gray-900 font-bold bg-gray-50 p-2 rounded">
-                    <span>Taxable Amount</span>
-                    <span>${taxableAmount.toFixed(2)}</span>
-                </div>
-
-                {/* 4. Sales Tax */}
-                <div className="flex justify-between text-sm text-gray-600">
-                    <span className="flex items-center gap-1">
-                        Sales Tax ({billingConfig.salesTaxRate}%)
-                        {billingConfig.isSalesTaxInclusive && <span className="text-[10px] bg-gray-100 px-1 rounded text-gray-500">Incl.</span>}
-                    </span>
-                    <span className="font-medium">+ ${taxAmount.toFixed(2)}</span>
-                </div>
-
-                {/* Discounts */}
-                {totalDiscount > 0 && (
-                    <div className="flex justify-between text-sm text-green-600 font-medium">
-                        <span>Discounts (Offer/Coupon)</span>
-                        <span>- ${totalDiscount.toFixed(2)}</span>
-                    </div>
-                )}
-
-                {/* Platform Fee */}
-                {paymentMethod === 'online' && (
-                    <div className="flex justify-between text-sm text-gray-600">
-                        <span>Payment sattlement & Platform Fee (3%)</span>
-                        <span className="font-medium">+ ${platformFee.toFixed(2)}</span>
-                    </div>
-                )}
-
-                {/* 5. Grand Total */}
-                <div className="flex justify-between items-center pt-2 text-2xl font-black text-gray-900 border-t border-gray-100 mt-2">
-                    <span>Grand Total</span>
-                    <span>${finalTotal.toFixed(2)}</span>
-                </div>
+            {/* Bill Receipt Component */}
+            <div className="flex-1 overflow-y-auto mb-6 bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+                <BillReceipt 
+                    items={flatItems}
+                    billingConfig={billingConfig}
+                    offerDiscount={offerDiscount}
+                    couponDiscount={couponDiscount}
+                    platformFeeRate={paymentMethod === 'online' ? 0.03 : 0}
+                    discountDescription={
+                        [
+                            appliedCoupon ? `Coupon ${appliedCoupon.code}` : '',
+                            bestPublicOffer ? `Offer ${bestPublicOffer.title}` : ''
+                        ].filter(Boolean).join(', ')
+                    }
+                />
             </div>
 
             {/* Offer Section */}

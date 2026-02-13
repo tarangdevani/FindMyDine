@@ -14,46 +14,44 @@ import { UserBookings } from './components/User/UserBookings';
 import { UserFavorites } from './components/User/UserFavorites';
 import { UserProfile, RestaurantData, UserRole, Reservation } from './types';
 import { auth, db } from './lib/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { getRestaurants } from './services/restaurantService';
-import { ArrowRight, Armchair } from 'lucide-react';
+import { ArrowRight, Armchair, Loader2 } from 'lucide-react';
 import { Button } from './components/UI/Button';
 
 const App: React.FC = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true); // Global Auth Loading State
   const [activeReservation, setActiveReservation] = useState<Reservation | null>(null);
   const [restaurants, setRestaurants] = useState<RestaurantData[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Restaurant Data Loading State
   const navigate = useNavigate();
   const location = useLocation();
   
   // Initialize Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        // Fetch detailed profile from Firestore (contains Role)
-        try {
-          const docRef = doc(db, "users", user.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      try {
+        if (user) {
+          // Fetch detailed profile from Firestore (contains Role)
+          const docRef = db.collection("users").doc(user.uid);
+          const docSnap = await docRef.get();
+          if (docSnap.exists) {
             const userData = docSnap.data() as UserProfile;
             
             // SECURITY CHECK: If staff is blocked, force logout
             if (userData.role === UserRole.STAFF && userData.isStaffBlocked) {
-                await signOut(auth);
+                await auth.signOut();
                 alert("Your access has been revoked by the restaurant administrator.");
-                return;
-            }
-
-            setCurrentUser(userData);
-            
-            // Redirect based on role if at root
-            if (location.pathname === '/') {
-                if (userData.role === UserRole.RESTAURANT) navigate('/dashboard');
-                if (userData.role === UserRole.ADMIN) navigate('/admin');
-                // Note: Staff stays on home page but sees "Go to Dashboard" button in header
+                setCurrentUser(null);
+            } else {
+                setCurrentUser(userData);
+                
+                // Redirect based on role if at root
+                if (location.pathname === '/') {
+                    if (userData.role === UserRole.RESTAURANT) navigate('/dashboard');
+                    if (userData.role === UserRole.ADMIN) navigate('/admin');
+                }
             }
           } else {
              // Basic fallback
@@ -64,11 +62,14 @@ const App: React.FC = () => {
                displayName: user.displayName || 'User'
              });
           }
-        } catch (error) {
-          console.error("Error fetching user profile:", error);
+        } else {
+          setCurrentUser(null);
         }
-      } else {
+      } catch (error) {
+        console.error("Error fetching user profile:", error);
         setCurrentUser(null);
+      } finally {
+        setIsAuthLoading(false); // Stop loading once auth check is complete
       }
     });
 
@@ -82,20 +83,17 @@ const App: React.FC = () => {
       return;
     }
 
-    const q = query(
-      collection(db, "reservations"),
-      where("userId", "==", currentUser.uid),
-      where("status", "==", "active")
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const res = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Reservation;
-        setActiveReservation(res);
-      } else {
-        setActiveReservation(null);
-      }
-    });
+    const unsubscribe = db.collection("reservations")
+      .where("userId", "==", currentUser.uid)
+      .where("status", "==", "active")
+      .onSnapshot((snapshot) => {
+        if (!snapshot.empty) {
+          const res = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Reservation;
+          setActiveReservation(res);
+        } else {
+          setActiveReservation(null);
+        }
+      });
 
     return () => unsubscribe();
   }, [currentUser]);
@@ -120,7 +118,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await auth.signOut();
       setCurrentUser(null);
       navigate('/'); 
     } catch (error) {
@@ -139,6 +137,15 @@ const App: React.FC = () => {
   const isClaimPage = location.pathname.includes('/claim');
   
   const showActiveTablePopup = activeReservation && !location.pathname.includes(`/table/${activeReservation.tableId}/claim`);
+
+  // Render Global Loader during Initial Auth Check
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 className="animate-spin text-primary-600" size={48} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white flex flex-col font-sans relative">
@@ -206,21 +213,21 @@ const App: React.FC = () => {
           />
 
           <Route 
-            path="/dashboard" 
+            path="/dashboard/*" 
             element={
               (currentUser?.role === UserRole.RESTAURANT || currentUser?.role === UserRole.STAFF)
                 ? <RestaurantDashboard user={currentUser} onLogout={handleLogout} />
-                : <div className="p-10 text-center">Unauthorized access.</div>
+                : <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500 font-medium">Unauthorized access.</div>
             } 
           />
 
-          {/* ADMIN ROUTE */}
+          {/* ADMIN ROUTE - Updated to wildcard for nested routing */}
           <Route 
-            path="/admin" 
+            path="/admin/*" 
             element={
               currentUser?.role === UserRole.ADMIN
                 ? <AdminDashboard user={currentUser} onLogout={handleLogout} />
-                : <div className="p-10 text-center">Access Denied. Admins Only.</div>
+                : <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500 font-medium">Access Denied. Admins Only.</div>
             } 
           />
         </Routes>

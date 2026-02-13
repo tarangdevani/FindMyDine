@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { getOrdersByRestaurant, updateOrderItemStatus } from '../../services/orderService';
+import { getOrdersByRestaurant, updateOrderItemStatus, getOrdersHistoryPaginated } from '../../services/orderService';
 import { Order, OrderStatus } from '../../types';
 import { KanbanCardItem } from './OrderManagement/types';
+import { Skeleton } from '../UI/Skeleton';
 
 // Child Components
 import { OrderManagementHeader } from './OrderManagement/OrderManagementHeader';
@@ -13,22 +14,76 @@ interface OrderManagementProps {
   userId: string;
 }
 
+const HISTORY_PAGE_SIZE = 20;
+
 export const OrderManagement: React.FC<OrderManagementProps> = ({ userId }) => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Real-time Board Data
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  
+  // History Data
+  const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
+  const [historyLastDoc, setHistoryLastDoc] = useState<any>(null);
+  const [historyHasMore, setHistoryHasMore] = useState(true);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   const [activeTab, setActiveTab] = useState<'board' | 'history'>('board');
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
 
+  // 1. Initial Load & Polling for Board
   useEffect(() => {
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 15000); // Poll every 15s for snappier updates
+    fetchActiveOrders();
+    const interval = setInterval(fetchActiveOrders, 15000); 
     return () => clearInterval(interval);
   }, [userId]);
 
-  const fetchOrders = async () => {
+  // 2. Fetch History when tab changes or filters change
+  useEffect(() => {
+    if (activeTab === 'history') {
+        fetchHistory(true);
+    }
+  }, [activeTab, startDate, endDate]);
+
+  const fetchActiveOrders = async () => {
     const data = await getOrdersByRestaurant(userId);
-    setOrders(data);
-    setIsLoading(false);
+    setActiveOrders(data);
+    setIsLoadingInitial(false);
+  };
+
+  const fetchHistory = async (reset: boolean = false) => {
+    if (reset) {
+        setIsHistoryLoading(true);
+        setHistoryOrders([]);
+        setHistoryLastDoc(null);
+        setHistoryHasMore(true);
+    }
+
+    const startDoc = reset ? null : historyLastDoc;
+    if (!reset && !historyHasMore) return;
+
+    try {
+        const result = await getOrdersHistoryPaginated(
+            userId,
+            HISTORY_PAGE_SIZE,
+            startDoc,
+            { startDate, endDate }
+        );
+
+        if (reset) {
+            setHistoryOrders(result.data);
+        } else {
+            setHistoryOrders(prev => [...prev, ...result.data]);
+        }
+        
+        setHistoryLastDoc(result.lastDoc);
+        setHistoryHasMore(result.data.length === HISTORY_PAGE_SIZE);
+    } catch(e) {
+        console.error(e);
+    } finally {
+        setIsHistoryLoading(false);
+    }
   };
 
   // --- Logic ---
@@ -37,18 +92,15 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ userId }) => {
     const [orderId, idxStr] = uniqueId.split('_');
     const itemIndex = parseInt(idxStr);
 
-    // Optimistic Update using functional state to prevent stale closures
-    setOrders(prevOrders => {
+    // Optimistic Update
+    setActiveOrders(prevOrders => {
         const orderIndex = prevOrders.findIndex(o => o.id === orderId);
         if (orderIndex === -1) return prevOrders;
         
         const newOrders = [...prevOrders];
-        // Create shallow copy of the order to update
         const updatedOrder = { ...newOrders[orderIndex] };
-        // Create shallow copy of items array
         const newItems = [...updatedOrder.items];
         
-        // Update specific item
         if (newItems[itemIndex]) {
             newItems[itemIndex] = { ...newItems[itemIndex], status: newStatus };
             updatedOrder.items = newItems;
@@ -61,8 +113,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ userId }) => {
     // API Call
     const success = await updateOrderItemStatus(orderId, itemIndex, newStatus);
     if (!success) {
-        // Revert on failure (simple fetch for now to resync)
-        fetchOrders(); 
+        fetchActiveOrders(); 
     }
   };
 
@@ -86,10 +137,10 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ userId }) => {
     }
   };
 
-  // --- Filtered Lists ---
+  // --- Transform Data for Props ---
 
-  // Flatten orders into items for the Kanban board
-  const activeItems: KanbanCardItem[] = orders.flatMap(order => 
+  // Active Items for Kanban (Flattened)
+  const activeItems: KanbanCardItem[] = activeOrders.flatMap(order => 
     order.items
         .map((item, idx) => ({
             uniqueId: `${order.id}_${idx}`,
@@ -98,12 +149,11 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ userId }) => {
             item: item,
             order: order
         }))
-        // Filter out items that are cancelled or paid from the board
         .filter(kItem => ['ordered', 'preparing', 'served'].includes(kItem.item.status || 'ordered'))
   );
 
-  // For history, we can show items that are 'paid' or 'cancelled'
-  const historyItems: KanbanCardItem[] = orders.flatMap(order => 
+  // History Items (Flattened from Paginated Orders)
+  const historyItems: KanbanCardItem[] = historyOrders.flatMap(order => 
     order.items
         .map((item, idx) => ({
             uniqueId: `${order.id}_${idx}`,
@@ -112,10 +162,21 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ userId }) => {
             item: item,
             order: order
         }))
-        .filter(kItem => ['paid', 'cancelled'].includes(kItem.item.status || 'ordered'))
+        // Optionally filter for paid/cancelled if you only want finished items in history
+        // .filter(kItem => ['paid', 'cancelled'].includes(kItem.item.status || 'ordered'))
+        // Or show ALL items in history context
   );
 
-  if (isLoading) return <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>;
+  if (isLoadingInitial) {
+      return (
+        <div className="animate-fade-in-up pb-10 h-[calc(100vh-140px)] flex flex-col">
+            <OrderManagementHeader activeTab={activeTab} setActiveTab={setActiveTab} />
+            <div className="flex gap-6 h-full mt-4">
+                {[...Array(3)].map((_, i) => <Skeleton key={i} className="flex-1 h-full rounded-2xl" />)}
+            </div>
+        </div>
+      );
+  }
 
   return (
     <div className="animate-fade-in-up pb-10 h-[calc(100vh-140px)] flex flex-col">
@@ -137,7 +198,16 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ userId }) => {
       )}
 
       {activeTab === 'history' && (
-        <OrderHistory historyItems={historyItems} />
+        <OrderHistory 
+            historyItems={historyItems} 
+            hasMore={historyHasMore}
+            onLoadMore={() => fetchHistory(false)}
+            isLoadingMore={isHistoryLoading}
+            startDate={startDate}
+            setStartDate={setStartDate}
+            endDate={endDate}
+            setEndDate={setEndDate}
+        />
       )}
       
     </div>

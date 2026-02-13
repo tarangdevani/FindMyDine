@@ -1,5 +1,4 @@
 
-import { collection, query, where, getDocs, orderBy, limit, writeBatch, doc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { DailyStat, Order, Reservation } from "../types";
 
@@ -14,17 +13,15 @@ const formatDateKey = (date: Date) => date.toISOString().split('T')[0];
  */
 export const getFinancialStats = async (restaurantId: string, startDate: string, endDate: string): Promise<DailyStat[]> => {
   try {
-    const statsRef = collection(db, "users", restaurantId, STATS_COLLECTION);
+    const statsRef = db.collection("users").doc(restaurantId).collection(STATS_COLLECTION);
     
     // Query exact range using string comparison (ISO format YYYY-MM-DD works perfectly for this)
-    const q = query(
-        statsRef, 
-        where("date", ">=", startDate),
-        where("date", "<=", endDate),
-        orderBy("date", "asc")
-    );
+    const snapshot = await statsRef 
+        .where("date", ">=", startDate)
+        .where("date", "<=", endDate)
+        .orderBy("date", "asc")
+        .get();
     
-    const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => doc.data() as DailyStat);
   } catch (error) {
     console.error("Error fetching financial stats:", error);
@@ -41,9 +38,8 @@ export const getFinancialStats = async (restaurantId: string, startDate: string,
 export const syncDailyStats = async (restaurantId: string): Promise<number> => {
   try {
     // A. Find last synced date
-    const statsRef = collection(db, "users", restaurantId, STATS_COLLECTION);
-    const lastStatQuery = query(statsRef, orderBy("date", "desc"), limit(1));
-    const lastStatSnap = await getDocs(lastStatQuery);
+    const statsRef = db.collection("users").doc(restaurantId).collection(STATS_COLLECTION);
+    const lastStatSnap = await statsRef.orderBy("date", "desc").limit(1).get();
 
     const today = new Date();
     today.setHours(0,0,0,0);
@@ -76,27 +72,23 @@ export const syncDailyStats = async (restaurantId: string): Promise<number> => {
 
     // Fetch Orders (Paid only)
     // Index Requirement: restaurantId (Asc) + status (Asc) + createdAt (Asc)
-    const ordersQ = query(
-      collection(db, "orders"),
-      where("restaurantId", "==", restaurantId),
-      where("status", "==", "paid"),
-      where("createdAt", ">=", startIso),
-      where("createdAt", "<", endIso),
-      orderBy("createdAt", "asc")
-    );
+    const ordersQ = db.collection("orders")
+      .where("restaurantId", "==", restaurantId)
+      .where("status", "==", "paid")
+      .where("createdAt", ">=", startIso)
+      .where("createdAt", "<", endIso)
+      .orderBy("createdAt", "asc");
     
     // Fetch Reservations (Completed/Active)
     // Index Requirement: restaurantId (Asc) + status (Asc) + createdAt (Asc)
-    const resQ = query(
-      collection(db, "reservations"),
-      where("restaurantId", "==", restaurantId),
-      where("status", "in", ["completed", "active"]), 
-      where("createdAt", ">=", startIso),
-      where("createdAt", "<", endIso),
-      orderBy("createdAt", "asc")
-    );
+    const resQ = db.collection("reservations")
+      .where("restaurantId", "==", restaurantId)
+      .where("status", "in", ["completed", "active"])
+      .where("createdAt", ">=", startIso)
+      .where("createdAt", "<", endIso)
+      .orderBy("createdAt", "asc");
 
-    const [ordersSnap, resSnap] = await Promise.all([getDocs(ordersQ), getDocs(resQ)]);
+    const [ordersSnap, resSnap] = await Promise.all([ordersQ.get(), resQ.get()]);
 
     // C. Aggregate In-Memory
     const statsMap = new Map<string, DailyStat>();
@@ -163,9 +155,9 @@ export const syncDailyStats = async (restaurantId: string): Promise<number> => {
 
     // D. Batch Write to Firestore
     if (statsMap.size > 0) {
-        const batch = writeBatch(db);
+        const batch = db.batch();
         statsMap.forEach((stat, dateKey) => {
-            const ref = doc(db, "users", restaurantId, STATS_COLLECTION, dateKey);
+            const ref = db.collection("users").doc(restaurantId).collection(STATS_COLLECTION).doc(dateKey);
             batch.set(ref, stat);
         });
         await batch.commit();

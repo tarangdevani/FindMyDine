@@ -4,8 +4,6 @@ import { X, Building2, User } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { UserRole } from '../../types';
 import { auth, db, googleProvider } from '../../lib/firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, updateProfile } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { PLAN_CONFIGS } from '../../services/subscriptionService';
 
 interface AuthModalProps {
@@ -93,11 +91,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
       })
     };
 
-    await setDoc(doc(db, "users", uid), userProfile);
+    await db.collection("users").doc(uid).set(userProfile);
     
     // Also init public doc for search filtering immediately
     if (role === UserRole.RESTAURANT) {
-        await setDoc(doc(db, "restaurants", uid), {
+        await db.collection("restaurants").doc(uid).set({
             name: formData.name,
             subscriptionPlan: 'base', // Ensure visibility logic works
             isOpen: false, // Default closed until setup
@@ -123,38 +121,41 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
     try {
       if (isLogin) {
         // --- Login Logic ---
-        const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+        const userCredential = await auth.signInWithEmailAndPassword(formData.email, formData.password);
         
-        // Fetch additional user data from Firestore
-        const userDoc = await getDoc(doc(db, "users", userCredential.user.uid));
-        
-        if (userDoc.exists()) {
-          onLoginSuccess(userDoc.data());
-        } else {
-          // Fallback if firestore doc is missing
-          onLoginSuccess({
-             uid: userCredential.user.uid,
-             email: userCredential.user.email,
-             role: UserRole.CUSTOMER // Default fallback
-          });
+        if (userCredential.user) {
+            // Fetch additional user data from Firestore
+            const userDoc = await db.collection("users").doc(userCredential.user.uid).get();
+            
+            if (userDoc.exists) {
+              onLoginSuccess(userDoc.data());
+            } else {
+              // Fallback if firestore doc is missing
+              onLoginSuccess({
+                 uid: userCredential.user.uid,
+                 email: userCredential.user.email,
+                 role: UserRole.CUSTOMER // Default fallback
+              });
+            }
         }
         onClose();
 
       } else {
         // --- Sign Up Logic ---
-        const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+        const userCredential = await auth.createUserWithEmailAndPassword(formData.email, formData.password);
         
-        // Update Auth Profile Display Name
-        if (formData.name) {
-          await updateProfile(userCredential.user, {
-            displayName: formData.name
-          });
-        }
+        if (userCredential.user) {
+            // Update Auth Profile Display Name
+            if (formData.name) {
+              await userCredential.user.updateProfile({
+                displayName: formData.name
+              });
+            }
 
-        // Create User Document in Firestore
-        const fullProfile = await createUserProfile(userCredential.user.uid, userCredential.user.email || '');
-        
-        onLoginSuccess(fullProfile);
+            // Create User Document in Firestore
+            const fullProfile = await createUserProfile(userCredential.user.uid, userCredential.user.email || '');
+            onLoginSuccess(fullProfile);
+        }
         onClose();
       }
     } catch (err: any) {
@@ -178,28 +179,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
     setIsLoading(true);
     setError(null);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
+      const result = await auth.signInWithPopup(googleProvider);
       
-      // Check if user exists in Firestore
-      const userDocRef = doc(db, "users", result.user.uid);
-      const userDoc = await getDoc(userDocRef);
+      if (result.user) {
+          // Check if user exists in Firestore
+          const userDocRef = db.collection("users").doc(result.user.uid);
+          const userDoc = await userDocRef.get();
 
-      if (userDoc.exists()) {
-        onLoginSuccess(userDoc.data());
-      } else {
-        // If first time Google login, create a default customer profile
-        const newProfile = {
-          uid: result.user.uid,
-          email: result.user.email,
-          role: UserRole.CUSTOMER, // Default to customer for Google Sign In
-          displayName: result.user.displayName,
-          mobile: '',
-          createdAt: new Date().toISOString()
-        };
-        await setDoc(userDocRef, newProfile);
-        onLoginSuccess(newProfile);
+          if (userDoc.exists) {
+            onLoginSuccess(userDoc.data());
+          } else {
+            // If first time Google login, create a default customer profile
+            const newProfile = {
+              uid: result.user.uid,
+              email: result.user.email,
+              role: UserRole.CUSTOMER, // Default to customer for Google Sign In
+              displayName: result.user.displayName,
+              mobile: '',
+              createdAt: new Date().toISOString()
+            };
+            await userDocRef.set(newProfile);
+            onLoginSuccess(newProfile);
+          }
+          onClose();
       }
-      onClose();
     } catch (err: any) {
       console.error("Google Auth Error:", err);
       setError("Failed to sign in with Google. Please try again.");

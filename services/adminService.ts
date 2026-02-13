@@ -1,5 +1,4 @@
 
-import { collection, getDocs, doc, updateDoc, query, where, orderBy, getDoc, writeBatch } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { UserProfile, RestaurantProfile, Transaction, Reservation } from "../types";
 
@@ -14,10 +13,10 @@ export interface AdminStats {
 // 1. ANALYZE: Get Global Stats
 export const getAdminStats = async (): Promise<AdminStats> => {
   try {
-    const usersSnap = await getDocs(query(collection(db, "users"), where("role", "==", "customer")));
-    const restSnap = await getDocs(query(collection(db, "users"), where("role", "==", "restaurant")));
-    const resSnap = await getDocs(collection(db, "reservations"));
-    const txnSnap = await getDocs(collection(db, "transactions")); // Expensive in prod, okay for now
+    const usersSnap = await db.collection("users").where("role", "==", "customer").get();
+    const restSnap = await db.collection("users").where("role", "==", "restaurant").get();
+    const resSnap = await db.collection("reservations").get();
+    const txnSnap = await db.collection("transactions").get(); // Expensive in prod, okay for now
 
     let platformRevenue = 0;
     
@@ -33,7 +32,10 @@ export const getAdminStats = async (): Promise<AdminStats> => {
       }
     });
 
-    const withdrawals = await getDocs(query(collection(db, "transactions"), where("type", "==", "withdrawal"), where("status", "==", "pending")));
+    const withdrawals = await db.collection("transactions")
+        .where("type", "==", "withdrawal")
+        .where("status", "==", "pending")
+        .get();
 
     return {
       totalUsers: usersSnap.size,
@@ -51,8 +53,7 @@ export const getAdminStats = async (): Promise<AdminStats> => {
 // 2. MANAGE USERS & RESTAURANTS
 export const getAllRestaurants = async (): Promise<RestaurantProfile[]> => {
   try {
-    const q = query(collection(db, "users"), where("role", "==", "restaurant"));
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection("users").where("role", "==", "restaurant").get();
     return snapshot.docs.map(doc => doc.data() as RestaurantProfile);
   } catch (error) {
     console.error("Error fetching restaurants:", error);
@@ -62,8 +63,7 @@ export const getAllRestaurants = async (): Promise<RestaurantProfile[]> => {
 
 export const getAllCustomers = async (): Promise<UserProfile[]> => {
   try {
-    const q = query(collection(db, "users"), where("role", "==", "customer"));
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection("users").where("role", "==", "customer").get();
     return snapshot.docs.map(doc => doc.data() as UserProfile);
   } catch (error) {
     console.error("Error fetching customers:", error);
@@ -74,13 +74,13 @@ export const getAllCustomers = async (): Promise<UserProfile[]> => {
 export const verifyRestaurant = async (uid: string, isVerified: boolean): Promise<boolean> => {
   try {
     // Update User Profile
-    await updateDoc(doc(db, "users", uid), { isVerified });
+    await db.collection("users").doc(uid).update({ isVerified });
     // Sync to Public Restaurant Data if it exists
     try {
-        const publicRef = doc(db, "restaurants", uid);
-        const snap = await getDoc(publicRef);
-        if(snap.exists()) {
-            await updateDoc(publicRef, { isVerified });
+        const publicRef = db.collection("restaurants").doc(uid);
+        const snap = await publicRef.get();
+        if(snap.exists) {
+            await publicRef.update({ isVerified });
         }
     } catch(e) {}
     
@@ -93,13 +93,13 @@ export const verifyRestaurant = async (uid: string, isVerified: boolean): Promis
 
 export const toggleUserStatus = async (uid: string, isActive: boolean): Promise<boolean> => {
   try {
-    await updateDoc(doc(db, "users", uid), { isActive });
+    await db.collection("users").doc(uid).update({ isActive });
     // If it's a restaurant, we should also close their public listing
     try {
-        const publicRef = doc(db, "restaurants", uid);
-        const snap = await getDoc(publicRef);
-        if(snap.exists()) {
-            await updateDoc(publicRef, { isOpen: isActive });
+        const publicRef = db.collection("restaurants").doc(uid);
+        const snap = await publicRef.get();
+        if(snap.exists) {
+            await publicRef.update({ isOpen: isActive });
         }
     } catch(e) {}
     
@@ -113,13 +113,11 @@ export const toggleUserStatus = async (uid: string, isActive: boolean): Promise<
 // 3. FINANCIALS & PAYOUTS
 export const getPayoutRequests = async (): Promise<Transaction[]> => {
   try {
-    const q = query(
-      collection(db, "transactions"), 
-      where("type", "==", "withdrawal"),
-      where("status", "==", "pending"),
-      orderBy("createdAt", "desc")
-    );
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection("transactions")
+      .where("type", "==", "withdrawal")
+      .where("status", "==", "pending")
+      .orderBy("createdAt", "desc")
+      .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
   } catch (error) {
     console.error("Error fetching payouts:", error);
@@ -132,7 +130,7 @@ export const processPayout = async (transactionId: string, action: 'approve' | '
     const status = action === 'approve' ? 'completed' : 'failed';
     const description = action === 'approve' ? 'Withdrawal Processed' : 'Withdrawal Rejected/Refunded';
     
-    await updateDoc(doc(db, "transactions", transactionId), { 
+    await db.collection("transactions").doc(transactionId).update({ 
         status,
         description
     });

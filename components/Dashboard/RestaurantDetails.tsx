@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { Save, Loader2 } from 'lucide-react';
+import { Save } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { RestaurantProfile, OperatingHours, DaySchedule } from '../../types';
 import { updateRestaurantProfile, getRestaurantProfile } from '../../services/restaurantService';
 import { deleteFileFromUrl } from '../../services/storageService';
 import { storage } from '../../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from '../../context/ToastContext';
+import { Skeleton } from '../UI/Skeleton';
+import { compressImage } from '../../utils/imageCompression';
 
 // Import Child Components
 import { BasicInfo } from './Profile/BasicInfo';
@@ -156,9 +157,16 @@ export const RestaurantDetails: React.FC<RestaurantDetailsProps> = ({ userId }) 
     return isValid;
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'cover' | 'logo') => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'cover' | 'logo') => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+      let file = e.target.files[0];
+      try {
+          showToast("Optimizing image...", "info");
+          file = await compressImage(file);
+      } catch (error) {
+          console.error("Compression skipped:", error);
+      }
+
       const preview = URL.createObjectURL(file);
       if (type === 'cover') {
         setCoverImage(file);
@@ -273,9 +281,9 @@ export const RestaurantDetails: React.FC<RestaurantDetailsProps> = ({ userId }) 
             await deleteFileFromUrl(profile.coverImageUrl);
         }
         
-        const refCover = ref(storage, `restaurants/${userId}/cover_${Date.now()}`);
-        await uploadBytes(refCover, coverImage);
-        coverUrl = await getDownloadURL(refCover);
+        const refCover = storage.ref(`restaurants/${userId}/cover_${Date.now()}`);
+        const snapshot = await refCover.put(coverImage);
+        coverUrl = await snapshot.ref.getDownloadURL();
       }
 
       // Handle Logo Upload & Cleanup
@@ -285,9 +293,9 @@ export const RestaurantDetails: React.FC<RestaurantDetailsProps> = ({ userId }) 
             await deleteFileFromUrl(profile.logoUrl);
         }
 
-        const refLogo = ref(storage, `restaurants/${userId}/logo_${Date.now()}`);
-        await uploadBytes(refLogo, logoImage);
-        logoUrl = await getDownloadURL(refLogo);
+        const refLogo = storage.ref(`restaurants/${userId}/logo_${Date.now()}`);
+        const snapshot = await refLogo.put(logoImage);
+        logoUrl = await snapshot.ref.getDownloadURL();
       }
 
       const cuisines = cuisineInput.split(',').map(c => c.trim()).filter(c => c.length > 0);
@@ -324,7 +332,29 @@ export const RestaurantDetails: React.FC<RestaurantDetailsProps> = ({ userId }) 
     }
   };
 
-  if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary-500" size={32} /></div>;
+  if (isLoading) {
+    return (
+        <div className="animate-fade-in-up pb-10">
+            <div className="flex justify-between items-center mb-8">
+                <div>
+                    <Skeleton className="h-8 w-48 mb-2" variant="text" />
+                    <Skeleton className="h-4 w-64" variant="text" />
+                </div>
+                <Skeleton className="h-10 w-32 rounded-full" />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 space-y-8">
+                    <Skeleton className="h-96 w-full rounded-2xl" />
+                    <Skeleton className="h-64 w-full rounded-2xl" />
+                </div>
+                <div className="space-y-8">
+                    <Skeleton className="h-80 w-full rounded-2xl" />
+                    <Skeleton className="h-96 w-full rounded-2xl" />
+                </div>
+            </div>
+        </div>
+    );
+  }
 
   const lat = profile.location?.lat;
   const lng = profile.location?.lng;

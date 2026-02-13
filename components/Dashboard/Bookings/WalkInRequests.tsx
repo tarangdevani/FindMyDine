@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Clock, User } from 'lucide-react';
+import { Clock, User, Check, X } from 'lucide-react';
 import { Reservation } from '../../../types';
 import { Button } from '../../UI/Button';
 
@@ -27,7 +27,7 @@ export const WalkInRequests: React.FC<WalkInRequestsProps> = ({ requests, onActi
                 </div>
                 
                 <div className="space-y-1 mb-4">
-                   <p className="text-gray-600 text-sm flex items-center gap-2"><User size={14}/> {booking.userName} ({booking.guestCount} Guests)</p>
+                   <p className="text-gray-600 text-sm flex items-center gap-2"><User size={14}/> {booking.userName}</p>
                    <p className="text-gray-400 text-xs flex items-center gap-2"><Clock size={14}/> Request: {new Date(booking.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
                 </div>
 

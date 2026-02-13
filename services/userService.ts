@@ -1,20 +1,19 @@
 
-import { collection, doc, getDoc, getDocs, setDoc, deleteDoc, query } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { RestaurantData } from "../types";
 
 export const toggleFavorite = async (userId: string, restaurant: RestaurantData): Promise<boolean> => {
   try {
-    const docRef = doc(db, "users", userId, "favorites", restaurant.id);
-    const docSnap = await getDoc(docRef);
+    const docRef = db.collection("users").doc(userId).collection("favorites").doc(restaurant.id);
+    const docSnap = await docRef.get();
 
-    if (docSnap.exists()) {
-      await deleteDoc(docRef);
+    if (docSnap.exists) {
+      await docRef.delete();
       return false; // Removed
     } else {
       // Store a snapshot of the restaurant data for easy display
       // Ensure no fields are undefined, as Firestore doesn't support them
-      await setDoc(docRef, {
+      await docRef.set({
         id: restaurant.id,
         name: restaurant.name || '',
         address: restaurant.address || '',
@@ -37,8 +36,7 @@ export const toggleFavorite = async (userId: string, restaurant: RestaurantData)
 
 export const getUserFavorites = async (userId: string): Promise<RestaurantData[]> => {
   try {
-    const q = query(collection(db, "users", userId, "favorites"));
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection("users").doc(userId).collection("favorites").get();
     return snapshot.docs.map(doc => doc.data() as RestaurantData);
   } catch (error) {
     console.error("Error fetching favorites:", error);
@@ -48,9 +46,9 @@ export const getUserFavorites = async (userId: string): Promise<RestaurantData[]
 
 export const checkIsFavorite = async (userId: string, restaurantId: string): Promise<boolean> => {
   try {
-    const docRef = doc(db, "users", userId, "favorites", restaurantId);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists();
+    const docRef = db.collection("users").doc(userId).collection("favorites").doc(restaurantId);
+    const docSnap = await docRef.get();
+    return docSnap.exists;
   } catch (error) {
     return false;
   }

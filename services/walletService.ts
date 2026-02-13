@@ -1,5 +1,4 @@
 
-import { collection, addDoc, query, where, getDocs, orderBy, doc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { Transaction, TransactionType, TransactionStatus, WalletStats } from "../types";
 
@@ -7,7 +6,7 @@ const COLLECTION_NAME = "transactions";
 
 export const recordTransaction = async (transaction: Transaction): Promise<string | null> => {
   try {
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
+    const docRef = await db.collection(COLLECTION_NAME).add({
       ...transaction,
       createdAt: new Date().toISOString()
     });
@@ -18,14 +17,14 @@ export const recordTransaction = async (transaction: Transaction): Promise<strin
   }
 };
 
+// Original function kept for legacy or small data uses
 export const getTransactions = async (restaurantId: string): Promise<Transaction[]> => {
   try {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where("restaurantId", "==", restaurantId),
-      orderBy("createdAt", "desc")
-    );
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection(COLLECTION_NAME)
+      .where("restaurantId", "==", restaurantId)
+      .orderBy("createdAt", "desc")
+      .limit(50) // Cap default fetch
+      .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
   } catch (error) {
     console.error("Error fetching transactions:", error);
@@ -33,34 +32,85 @@ export const getTransactions = async (restaurantId: string): Promise<Transaction
   }
 };
 
+// NEW: Paginated Fetch
+export const getTransactionsPaginated = async (
+  restaurantId: string,
+  pageSize: number,
+  lastDoc: any = null,
+  filters?: {
+    type?: string;
+    startDate?: string;
+    endDate?: string;
+  }
+): Promise<{ data: Transaction[], lastDoc: any }> => {
+  try {
+    let query = db.collection(COLLECTION_NAME)
+      .where("restaurantId", "==", restaurantId)
+      .orderBy("createdAt", "desc");
+
+    // Apply Filters
+    if (filters?.type && filters.type !== 'all') {
+      query = query.where("type", "==", filters.type);
+    }
+    
+    // Note: Firestore requires composite indexes for range filters on different fields than order
+    // ensuring "createdAt" is used for range to match orderBy
+    if (filters?.startDate) {
+      query = query.where("createdAt", ">=", filters.startDate);
+    }
+    if (filters?.endDate) {
+      // Add 'z' to include the full end day
+      query = query.where("createdAt", "<=", filters.endDate + 'T23:59:59');
+    }
+
+    if (lastDoc) {
+      query = query.startAfter(lastDoc);
+    }
+
+    const snapshot = await query.limit(pageSize).get();
+    
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+    const newLastDoc = snapshot.docs[snapshot.docs.length - 1];
+
+    return { data, lastDoc: newLastDoc };
+  } catch (error) {
+    console.error("Error fetching paginated transactions:", error);
+    return { data: [], lastDoc: null };
+  }
+};
+
 export const getWalletStats = async (restaurantId: string): Promise<WalletStats> => {
   try {
-    const transactions = await getTransactions(restaurantId);
+    // For stats, we need aggregate data. In production, use Firebase Aggregation Queries.
+    // Here, we maintain the client-side calc but limit it to recent history or use a separate stats doc (recommended).
+    // For this example, we fetch a larger batch to approximate, or rely on the syncDailyStats service for revenue.
+    // Ideally, "Wallet Balance" should be a stored field in the user document incremented by Cloud Functions.
+    
+    // Fetching last 1000 for reasonable approximation in this demo context
+    const snapshot = await db.collection(COLLECTION_NAME)
+        .where("restaurantId", "==", restaurantId)
+        .orderBy("createdAt", "desc")
+        .limit(1000) 
+        .get();
+        
+    const transactions = snapshot.docs.map(d => d.data() as Transaction);
     
     let availableBalance = 0;
     let pendingBalance = 0;
     let totalEarnings = 0;
 
     transactions.forEach(txn => {
-      // Calculate Total Earnings (Lifetime income, ignoring withdrawals)
       if (txn.amount > 0 && txn.status === 'completed') {
         totalEarnings += txn.amount;
       }
 
-      // Calculate Current Balances
       if (txn.status === 'completed') {
         availableBalance += txn.amount;
       } else if (txn.status === 'pending') {
-        // Only count positive pending amounts as "pending income" (like future reservations)
-        // Negative pending amounts (withdrawals) are deducted from available balance visually or handled separately
         if (txn.amount > 0) {
             pendingBalance += txn.amount;
         } else {
-            // If it's a pending withdrawal, it shouldn't be counted in available balance anymore
-            // In a double-entry system we'd deduct immediately. Here, we calculate summation.
-            // Since we sum all 'completed', a pending withdrawal isn't subtracted yet.
-            // We should subtract pending withdrawals from "Available to Withdraw" visualization usually.
-            availableBalance += txn.amount; // txn.amount is negative for withdrawal
+            availableBalance += txn.amount; 
         }
       }
     });
@@ -78,8 +128,8 @@ export const getWalletStats = async (restaurantId: string): Promise<WalletStats>
 
 export const updateTransactionStatus = async (transactionId: string, status: TransactionStatus): Promise<boolean> => {
   try {
-    const ref = doc(db, COLLECTION_NAME, transactionId);
-    await updateDoc(ref, { status });
+    const ref = db.collection(COLLECTION_NAME).doc(transactionId);
+    await ref.update({ status });
     return true;
   } catch (error) {
     console.error("Error updating transaction status:", error);
@@ -87,19 +137,16 @@ export const updateTransactionStatus = async (transactionId: string, status: Tra
   }
 };
 
-// Helper to update transaction status based on reference ID (e.g., when a reservation completes)
 export const completeTransactionByReference = async (referenceId: string): Promise<boolean> => {
   try {
-    const q = query(
-        collection(db, COLLECTION_NAME),
-        where("reservationId", "==", referenceId),
-        where("status", "==", "pending")
-    );
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection(COLLECTION_NAME)
+        .where("reservationId", "==", referenceId)
+        .where("status", "==", "pending")
+        .get();
     
     if (snapshot.empty) return false;
 
-    const batch = writeBatch(db);
+    const batch = db.batch();
     snapshot.docs.forEach(doc => {
         batch.update(doc.ref, { status: 'completed' });
     });
@@ -112,21 +159,17 @@ export const completeTransactionByReference = async (referenceId: string): Promi
   }
 };
 
-// Helper to CANCEL/VOID a pending transaction (e.g. when reservation is cancelled)
 export const cancelTransactionByReference = async (referenceId: string): Promise<boolean> => {
   try {
-    const q = query(
-        collection(db, COLLECTION_NAME),
-        where("reservationId", "==", referenceId),
-        where("status", "==", "pending")
-    );
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection(COLLECTION_NAME)
+        .where("reservationId", "==", referenceId)
+        .where("status", "==", "pending")
+        .get();
     
     if (snapshot.empty) return false;
 
-    const batch = writeBatch(db);
+    const batch = db.batch();
     snapshot.docs.forEach(doc => {
-        // Mark as failed/cancelled so it is removed from pending balance calculation
         batch.update(doc.ref, { status: 'failed', description: 'Voided - Reservation Cancelled' });
     });
     
@@ -143,8 +186,8 @@ export const requestWithdrawal = async (restaurantId: string, amount: number): P
         await recordTransaction({
             restaurantId,
             type: 'withdrawal',
-            amount: -amount, // Negative for withdrawal
-            status: 'pending', // PENDING for Admin Approval
+            amount: -amount,
+            status: 'pending',
             createdAt: new Date().toISOString(),
             description: 'Payout Request',
             metadata: {

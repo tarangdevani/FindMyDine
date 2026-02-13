@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, LayoutDashboard, Receipt } from 'lucide-react';
 import { Order, Reservation, TableItem, MenuItem, FoodCategory, Offer, OrderItem } from '../../types';
-import { getOrdersByRestaurant, updateOrder, createOrder, markOrderAsPaid } from '../../services/orderService';
+import { getOrdersByRestaurant, updateOrder, createOrder, markOrderAsPaid, getOrdersHistoryPaginated } from '../../services/orderService';
 import { getReservationsByRestaurant, completeReservation, createReservation } from '../../services/reservationService';
 import { getTables } from '../../services/tableService';
 import { getMenu, getCategories } from '../../services/menuService';
@@ -10,7 +10,7 @@ import { getOffers, trackOfferUsage } from '../../services/offerService';
 import { getRestaurantProfile } from '../../services/restaurantService';
 import { Button } from '../UI/Button';
 import { useToast } from '../../context/ToastContext';
-import { recordTransaction } from '../../services/walletService'; // Import wallet service
+import { recordTransaction } from '../../services/walletService';
 
 // Sub Components
 import { BillingList } from './Billing/BillingList';
@@ -22,15 +22,27 @@ interface BillingProps {
   userId: string;
 }
 
+const HISTORY_PAGE_SIZE = 15;
+
 export const Billing: React.FC<BillingProps> = ({ userId }) => {
   const { showToast } = useToast();
   // Mode State
   const [activeView, setActiveView] = useState<'dashboard' | 'pos'>('dashboard');
   const [activeListTab, setActiveListTab] = useState<'requests' | 'history'>('requests');
   
-  // Data State
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
+  // --- Data State ---
+  // Real-time / Live Data
+  const [liveOrders, setLiveOrders] = useState<Order[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]); // needed to link live orders
+  
+  // Historical / Paginated Data
+  const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
+  const [historyLastDoc, setHistoryLastDoc] = useState<any>(null);
+  const [historyHasMore, setHistoryHasMore] = useState(true);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [historyFilters, setHistoryFilters] = useState({ search: '', startDate: '', endDate: '' });
+
+  // Static Data
   const [tables, setTables] = useState<TableItem[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<FoodCategory[]>([]);
@@ -39,34 +51,92 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
   
   // Selection State
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // 1. Initial Load & Real-time Poll
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 15000);
+    fetchStaticData();
+    fetchLiveData(); // Initial fetch
+    const interval = setInterval(fetchLiveData, 15000); // Poll live data
     return () => clearInterval(interval);
   }, [userId]);
 
-  const fetchData = async () => {
-    const [orderData, resData, tableData, menuData, catData, offerData, profileData] = await Promise.all([
-      getOrdersByRestaurant(userId),
-      getReservationsByRestaurant(userId),
+  // 2. Fetch History when tab active or filters change
+  useEffect(() => {
+    if (activeListTab === 'history') {
+        fetchHistory(true);
+    }
+  }, [activeListTab, historyFilters]);
+
+  const fetchStaticData = async () => {
+    const [tableData, menuData, catData, offerData, profileData] = await Promise.all([
       getTables(userId),
       getMenu(userId),
       getCategories(userId),
       getOffers(userId),
       getRestaurantProfile(userId)
     ]);
-    
-    setOrders(orderData);
-    setReservations(resData);
     setTables(tableData);
     setMenuItems(menuData);
     setCategories(catData);
     setOffers(offerData);
     if (profileData?.billingConfig) setBillingConfig(profileData.billingConfig);
-    setIsLoading(false);
+    setIsLoadingInitial(false);
+  };
+
+  const fetchLiveData = async () => {
+    // Fetch recent active orders for "Requests" view
+    const [orderData, resData] = await Promise.all([
+      getOrdersByRestaurant(userId), // returns limited recent batch
+      getReservationsByRestaurant(userId)
+    ]);
+    setLiveOrders(orderData);
+    setReservations(resData);
+  };
+
+  const fetchHistory = async (reset: boolean = false) => {
+    if (reset) {
+        setIsHistoryLoading(true);
+        setHistoryOrders([]);
+        setHistoryLastDoc(null);
+        setHistoryHasMore(true);
+    }
+
+    // Determine doc to start after
+    const startDoc = reset ? null : historyLastDoc;
+    // Don't fetch if no more data (unless resetting)
+    if (!reset && !historyHasMore) return;
+
+    try {
+        const result = await getOrdersHistoryPaginated(
+            userId, 
+            HISTORY_PAGE_SIZE, 
+            startDoc,
+            historyFilters
+        );
+
+        if (reset) {
+            setHistoryOrders(result.data);
+        } else {
+            setHistoryOrders(prev => [...prev, ...result.data]);
+        }
+        
+        setHistoryLastDoc(result.lastDoc);
+        setHistoryHasMore(result.data.length === HISTORY_PAGE_SIZE);
+    } catch (e) {
+        console.error(e);
+    } finally {
+        setIsHistoryLoading(false);
+    }
+  };
+
+  const handleHistorySearch = (search: string) => {
+      setHistoryFilters(prev => ({ ...prev, search }));
+  };
+
+  const handleHistoryDateChange = (startDate: string, endDate: string) => {
+      setHistoryFilters(prev => ({ ...prev, startDate, endDate }));
   };
 
   const handleSelectOrder = (order: Order) => {
@@ -78,7 +148,6 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
     setIsProcessing(true);
     try {
         const res = reservations.find(r => r.id === selectedOrder.reservationId);
-        // We use the helper to close reservation and mark paid
         await completeReservation(
             selectedOrder.reservationId, 
             userId, 
@@ -86,14 +155,8 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
             { totalBillAmount: selectedOrder.totalAmount }
         );
         
-        // Update status of order and ALL its items to 'paid'
         await markOrderAsPaid(selectedOrder.id!);
         
-        // WALLET: Record counter payment (Optional: If we want to track cash flow in wallet, 
-        // usually wallets track *digital* balance. Assuming cash is handled physically, we might NOT record it in "Wallet Balance"
-        // but for "Total Sales" stats. For now, let's keep Wallet strictly for Online/Digital Platform money.)
-        
-        // Track Offer Usage if applied
         if (selectedOrder.appliedOfferId && selectedOrder.billDetails) {
             await trackOfferUsage(userId, selectedOrder.appliedOfferId, {
                 userId: selectedOrder.userId,
@@ -103,8 +166,11 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
             });
         }
         
-        // Refresh and switch tab
-        await fetchData();
+        // Refresh both lists
+        await fetchLiveData();
+        // If history is active, refresh it to show new paid order
+        if (activeListTab === 'history') fetchHistory(true);
+        
         setActiveListTab('history');
         setSelectedOrder(null);
         showToast("Payment confirmed and session closed", "success");
@@ -119,7 +185,6 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
   const handleCreateNewBill = async (posData: any) => {
     setIsProcessing(true);
     try {
-        // 1. Create a "completed" reservation entry for record keeping
         const resData: Reservation = {
             restaurantId: userId,
             restaurantName: 'POS Order',
@@ -131,7 +196,6 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
             date: new Date().toISOString().split('T')[0],
             startTime: new Date().toTimeString().slice(0, 5),
             endTime: new Date().toTimeString().slice(0, 5),
-            guestCount: 1,
             status: 'completed',
             type: 'walk_in',
             createdAt: new Date().toISOString(),
@@ -141,12 +205,7 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
         };
         const resId = await createReservation(resData);
 
-        // 2. Create the Order with Billing Snapshot
-        // Ensure all items are marked as PAID since this is an instant POS transaction
-        const itemsWithPaidStatus = posData.items.map((i: OrderItem) => ({ 
-            ...i, 
-            status: 'paid' 
-        }));
+        const itemsWithPaidStatus = posData.items.map((i: OrderItem) => ({ ...i, status: 'paid' }));
 
         const orderData: Order = {
             restaurantId: userId,
@@ -161,11 +220,10 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
             createdAt: new Date().toISOString(),
             customDiscount: posData.customDiscount,
             appliedOfferId: posData.appliedOfferId,
-            billDetails: posData.billDetails // Important: Store the snapshot!
+            billDetails: posData.billDetails
         };
         const orderId = await createOrder(orderData);
 
-        // Track Offer Usage if applied
         if (posData.appliedOfferId && posData.billDetails) {
             await trackOfferUsage(userId, posData.appliedOfferId, {
                 userId: 'walk-in-pos',
@@ -176,11 +234,9 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
         }
 
         showToast("Bill Generated & Saved to History", "success");
-        await fetchData();
+        await fetchLiveData();
         setActiveView('dashboard');
         setActiveListTab('history');
-        
-        // Auto-select the newly created order for printing
         const newOrder = { ...orderData, id: orderId };
         setSelectedOrder(newOrder);
 
@@ -232,12 +288,22 @@ export const Billing: React.FC<BillingProps> = ({ userId }) => {
                     {/* List Column */}
                     <div className="md:col-span-4 h-full overflow-hidden">
                         <BillingList 
-                            orders={orders}
-                            reservations={reservations}
                             activeTab={activeListTab}
                             setActiveTab={setActiveListTab}
                             onSelectOrder={handleSelectOrder}
                             selectedOrderId={selectedOrder?.id}
+                            
+                            // Real-time Data
+                            requestsOrders={liveOrders}
+                            reservations={reservations}
+                            
+                            // History Data
+                            historyOrders={historyOrders}
+                            onHistorySearch={handleHistorySearch}
+                            onHistoryDateChange={handleHistoryDateChange}
+                            onLoadMoreHistory={() => fetchHistory(false)}
+                            hasMoreHistory={historyHasMore}
+                            isLoadingHistory={isHistoryLoading}
                         />
                     </div>
                     {/* Preview Column */}

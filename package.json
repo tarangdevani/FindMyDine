@@ -1,3 +1,4 @@
+
 {
   "name": "findmydine",
   "private": true,
@@ -14,7 +15,8 @@
     "react-router-dom": "^7.12.0",
     "react-dom": "^19.2.3",
     "firebase": "^12.7.0",
-    "@google/genai": "^1.35.0"
+    "@google/genai": "^1.35.0",
+    "@emailjs/browser": "^4.3.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

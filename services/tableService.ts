@@ -1,16 +1,15 @@
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, orderBy, setDoc, getDoc } from "firebase/firestore";
+
 import { db } from "../lib/firebase";
-import { TableItem, Wall, WindowItem, FloorPlanData } from "../types";
+import { TableItem, FloorPlanData } from "../types";
 
 // Helper to reference subcollections under a specific user (restaurant)
 const getUserSubcollection = (uid: string, subcollection: string) => {
-  return collection(db, "users", uid, subcollection);
+  return db.collection("users").doc(uid).collection(subcollection);
 };
 
 export const getTables = async (uid: string): Promise<TableItem[]> => {
   try {
-    const q = query(getUserSubcollection(uid, "tables"), orderBy("createdAt")); 
-    const snapshot = await getDocs(q);
+    const snapshot = await getUserSubcollection(uid, "tables").orderBy("createdAt").get(); 
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TableItem));
   } catch (error) {
     console.error("Error fetching tables:", error);
@@ -21,7 +20,7 @@ export const getTables = async (uid: string): Promise<TableItem[]> => {
 export const addTable = async (uid: string, table: TableItem): Promise<TableItem | null> => {
   try {
     const { id, ...data } = table;
-    const docRef = await addDoc(getUserSubcollection(uid, "tables"), {
+    const docRef = await getUserSubcollection(uid, "tables").add({
       ...data,
       createdAt: new Date().toISOString()
     });
@@ -36,7 +35,7 @@ export const updateTable = async (uid: string, table: TableItem): Promise<boolea
   if (!table.id) return false;
   try {
     const { id, ...data } = table;
-    await updateDoc(doc(db, "users", uid, "tables", id), data);
+    await getUserSubcollection(uid, "tables").doc(id).update(data);
     return true;
   } catch (error) {
     console.error("Error updating table:", error);
@@ -46,7 +45,7 @@ export const updateTable = async (uid: string, table: TableItem): Promise<boolea
 
 export const deleteTable = async (uid: string, tableId: string): Promise<boolean> => {
   try {
-    await deleteDoc(doc(db, "users", uid, "tables", tableId));
+    await getUserSubcollection(uid, "tables").doc(tableId).delete();
     return true;
   } catch (error) {
     console.error("Error deleting table:", error);
@@ -60,9 +59,9 @@ export const getFloorPlan = async (uid: string, area: string): Promise<FloorPlan
   try {
     // Sanitize area name for doc ID
     const docId = area.toLowerCase().replace(/\s+/g, '_');
-    const docRef = doc(db, "users", uid, "floorplan", docId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
+    const docRef = getUserSubcollection(uid, "floorplan").doc(docId);
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
       return docSnap.data() as FloorPlanData;
     }
     return { rooms: [], tables: [], walls: [], windows: [] };
@@ -75,8 +74,8 @@ export const getFloorPlan = async (uid: string, area: string): Promise<FloorPlan
 export const saveFloorPlan = async (uid: string, area: string, data: FloorPlanData): Promise<boolean> => {
   try {
     const docId = area.toLowerCase().replace(/\s+/g, '_');
-    const docRef = doc(db, "users", uid, "floorplan", docId);
-    await setDoc(docRef, data, { merge: true });
+    const docRef = getUserSubcollection(uid, "floorplan").doc(docId);
+    await docRef.set(data, { merge: true });
     return true;
   } catch (error) {
     console.error("Error saving floor plan:", error);

@@ -5,6 +5,8 @@ import { Button } from '../../UI/Button';
 import { Offer, MenuItem } from '../../../types';
 import { Checkbox } from '../../UI/Checkbox';
 import { useToast } from '../../../context/ToastContext';
+import { Select } from '../../UI/Select';
+import { DatePicker } from '../../UI/DatePicker';
 
 interface OfferFormModalProps {
   isOpen: boolean;
@@ -178,21 +180,21 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
                 {formData.rewardType === 'discount' ? (
                    <div className="grid grid-cols-2 gap-4 bg-primary-50 p-4 rounded-xl border border-primary-100">
                       <div>
-                         <label className="block text-xs font-bold text-primary-800 mb-1">Discount Mode</label>
-                         <select 
-                           className="w-full px-3 py-2 rounded-lg border border-primary-200 bg-white text-gray-900 text-sm outline-none"
-                           value={formData.discountType}
-                           onChange={(e) => setFormData({...formData, discountType: e.target.value as any})}
-                         >
-                            <option value="percentage">Percentage (%)</option>
-                            <option value="fixed">Fixed Amount ($)</option>
-                         </select>
+                         <Select 
+                            label="Discount Mode"
+                            value={formData.discountType || 'percentage'}
+                            onChange={(val) => setFormData({...formData, discountType: val})}
+                            options={[
+                                { value: 'percentage', label: 'Percentage (%)' },
+                                { value: 'fixed', label: 'Fixed Amount ($)' }
+                            ]}
+                         />
                       </div>
                       <div>
-                         <label className="block text-xs font-bold text-primary-800 mb-1">Value</label>
+                         <label className="block text-xs font-bold text-primary-800 mb-1.5 ml-1">Value</label>
                          <input 
                            type="number" min="0" required
-                           className="w-full px-3 py-2 rounded-lg border border-primary-200 bg-white text-gray-900 text-sm outline-none font-bold"
+                           className="w-full px-4 py-2.5 rounded-xl border border-primary-200 bg-white text-gray-900 text-sm outline-none font-bold"
                            value={formData.discountValue}
                            onChange={(e) => setFormData({...formData, discountValue: parseFloat(e.target.value)})}
                          />
@@ -213,15 +215,13 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
                 ) : (
                    <div className="bg-primary-50 p-4 rounded-xl border border-primary-100 space-y-4">
                       <div>
-                         <label className="block text-xs font-bold text-primary-800 mb-1">Select Free Item <span className="text-red-500">*</span></label>
-                         <select 
-                           className="w-full px-3 py-2 rounded-lg border border-primary-200 bg-white text-gray-900 text-sm outline-none"
-                           value={formData.freeItemId}
-                           onChange={(e) => setFormData({...formData, freeItemId: e.target.value})}
-                         >
-                            <option value="">-- Choose Item --</option>
-                            {menuItems.map(item => <option key={item.id} value={item.id}>{item.name} (${item.price})</option>)}
-                         </select>
+                         <Select 
+                            label="Select Free Item *"
+                            value={formData.freeItemId || ''}
+                            onChange={(val) => setFormData({...formData, freeItemId: val})}
+                            placeholder="-- Choose Item --"
+                            options={menuItems.map(item => ({ value: item.id!, label: `${item.name} ($${item.price})` }))}
+                         />
                       </div>
                       <div className="flex gap-2 text-xs text-primary-700 bg-white p-2 rounded border border-primary-200">
                          <AlertCircle size={14} className="shrink-0 mt-0.5"/>
@@ -252,15 +252,13 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
                     </div>
                     {formData.rewardType === 'free_item' && (
                        <div>
-                          <label className="block text-xs font-bold text-gray-600 mb-1">OR Buy Specific Item</label>
-                          <select 
-                            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm outline-none"
-                            value={formData.triggerItemId}
-                            onChange={(e) => setFormData({...formData, triggerItemId: e.target.value, minSpend: e.target.value ? 0 : formData.minSpend})}
-                          >
-                             <option value="">-- No Item Trigger --</option>
-                             {menuItems.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                          </select>
+                          <Select 
+                            label="OR Buy Specific Item"
+                            value={formData.triggerItemId || ''}
+                            onChange={(val) => setFormData({...formData, triggerItemId: val, minSpend: val ? 0 : formData.minSpend})}
+                            placeholder="-- No Item Trigger --"
+                            options={menuItems.map(item => ({ value: item.id!, label: item.name }))}
+                          />
                        </div>
                     )}
                     
@@ -327,24 +325,18 @@ export const OfferFormModal: React.FC<OfferFormModalProps> = ({
 
                 <div className="grid grid-cols-2 gap-4">
                    <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Valid From</label>
-                      <input 
-                        type="date" 
-                        required 
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm" 
-                        value={formData.validFrom} 
-                        onChange={(e) => setFormData({...formData, validFrom: e.target.value})} 
+                      <DatePicker 
+                        label="Valid From"
+                        value={formData.validFrom || ''}
+                        onChange={(date) => setFormData({...formData, validFrom: date})}
                       />
                    </div>
                    <div>
-                      <label className="block text-xs font-bold text-gray-600 mb-1">Valid Until</label>
-                      <input 
-                        type="date" 
-                        required 
+                      <DatePicker 
+                        label="Valid Until"
+                        value={formData.validUntil || ''}
+                        onChange={(date) => setFormData({...formData, validUntil: date})}
                         min={formData.validFrom}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm" 
-                        value={formData.validUntil} 
-                        onChange={(e) => setFormData({...formData, validUntil: e.target.value})} 
                       />
                    </div>
                 </div>

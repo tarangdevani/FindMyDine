@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, Utensils, Calendar, Settings, Menu, 
   Camera, Armchair, ShoppingBag, Receipt, Ticket, BookOpen, 
@@ -37,8 +38,6 @@ const DEFAULT_NAV_ITEMS: NavItemConfig[] = [
 ];
 
 interface SidebarProps {
-  activeView: DashboardView;
-  setActiveView: (view: DashboardView) => void;
   isCollapsed: boolean;
   setIsCollapsed: (v: boolean) => void;
   isMobileMenuOpen: boolean;
@@ -48,7 +47,6 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
-  activeView, setActiveView, 
   isCollapsed, setIsCollapsed, 
   isMobileMenuOpen, setIsMobileMenuOpen, 
   user, onLogoutClick 
@@ -66,7 +64,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (savedOrderJson) {
       try {
         const savedOrder = JSON.parse(savedOrderJson) as string[];
-        // Sort items based on saved ID order, appending new items at the end
         const sorted = [...DEFAULT_NAV_ITEMS].sort((a, b) => {
           const indexA = savedOrder.indexOf(a.id);
           const indexB = savedOrder.indexOf(b.id);
@@ -157,20 +154,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto custom-scrollbar overflow-x-hidden">
         {navItems.map((item, index) => {
           // --- Permission Logic ---
-          // 1. Staff can never see "Staff" Management
           if (item.id === 'staff' && user?.role === UserRole.STAFF) return null;
-          // 2. Staff can never see "Financials" (assuming sensitive)
           if (item.id === 'financials' && user?.role === UserRole.STAFF) return null;
-          // 3. Staff can never see "Subscription"
           if (item.id === 'subscription' && user?.role === UserRole.STAFF) return null;
           
-          // 4. Staff can only see what is in their permissions
           if (user?.role === UserRole.STAFF && user.permissions && !user.permissions.includes(item.id) && item.id !== 'overview') {
              if (!user.permissions.includes(item.id)) return null;
           }
 
           const Icon = item.icon;
-          const isActive = activeView === item.id;
+          const linkPath = item.id === 'overview' ? '/dashboard' : `/dashboard/${item.id}`;
           
           return (
             <div
@@ -181,52 +174,58 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onDragEnd={handleDragEnd}
               className={`relative transition-all duration-200 ${draggedItemIndex === index ? 'opacity-50' : 'opacity-100'}`}
             >
-              <button 
-                onClick={() => { setActiveView(item.id); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'justify-start px-4'} py-3 text-sm font-medium rounded-xl transition-all relative group cursor-pointer
+              <NavLink 
+                to={linkPath}
+                end={item.id === 'overview'}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={({ isActive }) => `w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'justify-start px-4'} py-3 text-sm font-medium rounded-xl transition-all relative group cursor-pointer
                   ${isActive
                     ? 'bg-primary-50 text-primary-700 shadow-sm' 
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`}
                 title={isCollapsed ? item.label : ''}
               >
-                {!isCollapsed && (
-                  <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-300 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing">
-                    <GripVertical size={12} />
-                  </span>
-                )}
+                {({ isActive }) => (
+                  <>
+                    {!isCollapsed && (
+                      <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-300 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing">
+                        <GripVertical size={12} />
+                      </span>
+                    )}
 
-                <div className="relative">
-                  <Icon size={20} className="shrink-0" />
-                  {isCollapsed && item.isLive && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white animate-pulse"></span>
-                  )}
-                </div>
-                
-                {!isCollapsed && (
-                    <>
-                      <span className="ml-3 truncate">{item.label}</span>
-                      <div className="ml-auto flex items-center gap-2">
-                        {item.isLive && (
-                          <div className="relative flex h-2.5 w-2.5 mr-1">
-                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                    <div className="relative">
+                      <Icon size={20} className="shrink-0" />
+                      {isCollapsed && item.isLive && (
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white animate-pulse"></span>
+                      )}
+                    </div>
+                    
+                    {!isCollapsed && (
+                        <>
+                          <span className="ml-3 truncate">{item.label}</span>
+                          <div className="ml-auto flex items-center gap-2">
+                            {item.isLive && (
+                              <div className="relative flex h-2.5 w-2.5 mr-1">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                              </div>
+                            )}
+                            {item.badge && <span className="bg-red-100 text-red-600 py-0.5 px-2 rounded-full text-xs font-bold">{item.badge}</span>}
                           </div>
-                        )}
-                        {item.badge && <span className="bg-red-100 text-red-600 py-0.5 px-2 rounded-full text-xs font-bold">{item.badge}</span>}
-                      </div>
-                    </>
+                        </>
+                    )}
+                    
+                    {isCollapsed && (
+                        <>
+                          {(item.badge) && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>}
+                          <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                              {item.label}
+                          </div>
+                        </>
+                    )}
+                  </>
                 )}
-                
-                {isCollapsed && (
-                    <>
-                      {(item.badge) && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>}
-                      <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg">
-                          {item.label}
-                      </div>
-                    </>
-                )}
-              </button>
+              </NavLink>
             </div>
           );
         })}
@@ -234,10 +233,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer / Profile */}
       <div className="p-3 border-t border-gray-50 bg-gray-50/30 overflow-x-hidden shrink-0">
-        <div 
-          onClick={() => { setActiveView('profile'); setIsMobileMenuOpen(false); }} 
-          className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all border mb-2 group relative
-            ${activeView === 'profile' ? 'bg-white border-primary-200 shadow-md ring-1 ring-primary-100' : 'bg-white border-gray-100 hover:border-primary-200'}
+        <NavLink 
+          to="/dashboard/profile"
+          onClick={() => setIsMobileMenuOpen(false)}
+          className={({ isActive }) => `flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all border mb-2 group relative
+            ${isActive ? 'bg-white border-primary-200 shadow-md ring-1 ring-primary-100' : 'bg-white border-gray-100 hover:border-primary-200'}
             ${isCollapsed ? 'justify-center' : ''}`}
         >
           <div className="h-9 w-9 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 font-bold shrink-0 border-2 border-white shadow-sm overflow-hidden">
@@ -258,7 +258,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   Profile
               </div>
           )}
-        </div>
+        </NavLink>
         
         <button 
           onClick={onLogoutClick} 

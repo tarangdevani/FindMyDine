@@ -13,7 +13,6 @@ interface BookingSidebarProps {
   date: string; setDate: (v: string) => void;
   startTime: string; setStartTime: (v: string) => void;
   endTime: string; setEndTime: (v: string) => void;
-  guests: number; setGuests: (v: number) => void;
   selectedTable: TableItem | null;
   reservationFee: number;
   isBooking: boolean;
@@ -26,7 +25,6 @@ export const BookingSidebar: React.FC<BookingSidebarProps> = ({
   date, setDate,
   startTime, setStartTime,
   endTime, setEndTime,
-  guests, setGuests,
   selectedTable, reservationFee, isBooking, onConfirmBooking, minDate
 }) => {
   const { showToast } = useToast();
@@ -73,17 +71,6 @@ export const BookingSidebar: React.FC<BookingSidebarProps> = ({
         return;
     }
 
-    // 5. Validate Guests
-    if (guests <= 0) {
-        showToast("Guest count must be at least 1.", "error");
-        return;
-    }
-    if (selectedTable && guests > selectedTable.seats + 2) {
-        // Allow slight overcrowding but warn? Or strictly block. Let's block for safety.
-        showToast(`This table only seats ${selectedTable.seats} people.`, "warning");
-        return;
-    }
-
     onConfirmBooking(paymentData);
   };
   
@@ -122,7 +109,6 @@ export const BookingSidebar: React.FC<BookingSidebarProps> = ({
             date={date} setDate={setDate}
             startTime={startTime} setStartTime={setStartTime}
             endTime={endTime} setEndTime={setEndTime}
-            guests={guests} setGuests={setGuests}
             minDate={minDate}
             className="mb-6"
         />

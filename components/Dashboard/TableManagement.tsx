@@ -7,6 +7,7 @@ import { getTables, addTable, updateTable, deleteTable, getFloorPlan } from '../
 import { getRestaurantProfile } from '../../services/restaurantService';
 import { ArchitecturalFloorPlan } from './ArchitecturalFloorPlan';
 import { useToast } from '../../context/ToastContext';
+import { Skeleton } from '../UI/Skeleton';
 
 // Child Components
 import { TableHeader } from './Tables/TableHeader';
@@ -242,18 +243,22 @@ export const TableManagement: React.FC<TableManagementProps> = ({ userId }) => {
   };
 
   const getQRUrl = (tableId: string) => {
-      const baseUrl = window.location.origin + window.location.pathname;
-      return `${baseUrl}#/restaurant/${userId}/table/${tableId}/claim`;
+      // Robust QR generation for HashRouter
+      const base = window.location.href.split('#')[0]; // Remove existing hash
+      const cleanBase = base.endsWith('/') ? base.slice(0, -1) : base;
+      return `${cleanBase}/#/restaurant/${userId}/table/${tableId}/claim`;
   };
 
   const handlePrintAllQRs = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    // ... (Use same print logic logic or move to util if needed, keep inline for now as it relies on state)
-    // For brevity, keeping simple logic here, same as before
     const qrSize = 250;
-    const baseUrl = window.location.origin + window.location.pathname;
-    const htmlContent = `<html><head><title>Print QR Codes</title><style>body{font-family:sans-serif;padding:20px;}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:30px;}.card{border:2px solid #eee;padding:20px;text-align:center;border-radius:16px;}.qr{width:${qrSize}px;height:${qrSize}px;}</style></head><body><div class="grid">${tables.map(t => `<div class="card"><h3>${restaurantName}</h3><img class="qr" src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(`${baseUrl}#/restaurant/${userId}/table/${t.id}/claim`)}" /><h2>${t.name}</h2></div>`).join('')}</div><script>window.onload=function(){setTimeout(function(){window.print();},500);}</script></body></html>`;
+    const baseUrl = window.location.href.split('#')[0].replace(/\/$/, "");
+    
+    const htmlContent = `<html><head><title>Print QR Codes</title><style>body{font-family:sans-serif;padding:20px;}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:30px;}.card{border:2px solid #eee;padding:20px;text-align:center;border-radius:16px;}.qr{width:${qrSize}px;height:${qrSize}px;}</style></head><body><div class="grid">${tables.map(t => {
+      const url = `${baseUrl}/#/restaurant/${userId}/table/${t.id}/claim`;
+      return `<div class="card"><h3>${restaurantName}</h3><img class="qr" src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(url)}" /><h2>${t.name}</h2></div>`
+    }).join('')}</div><script>window.onload=function(){setTimeout(function(){window.print();},500);}</script></body></html>`;
     printWindow.document.write(htmlContent);
     printWindow.document.close();
   };
@@ -297,7 +302,16 @@ export const TableManagement: React.FC<TableManagementProps> = ({ userId }) => {
       />
 
       {isLoading ? (
-         <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
+         <div className="space-y-8 animate-fade-in pb-10">
+            {[...Array(2)].map((_, i) => (
+                <div key={i} className="bg-white rounded-2xl shadow-soft border border-gray-100 p-6">
+                    <Skeleton className="h-8 w-40 mb-4" variant="text" />
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        {[...Array(4)].map((_, j) => <Skeleton key={j} className="h-32 w-full rounded-xl" />)}
+                    </div>
+                </div>
+            ))}
+         </div>
       ) : tables.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-2xl border border-gray-100 border-dashed">
           <Armchair size={48} className="mx-auto text-gray-300 mb-4" />

@@ -1,5 +1,4 @@
 
-import { collection, addDoc, query, where, getDocs, updateDoc, doc, orderBy, writeBatch, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { Reservation, ReservationStatus } from "../types";
 import { calculateReservationRevenue } from "../utils/billing";
@@ -22,7 +21,7 @@ export const createReservation = async (reservation: Reservation): Promise<strin
     // Deep clean removes undefined values from nested objects (like revenueSplit or metadata)
     const cleanData = deepClean(resWithCurrency);
 
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), cleanData);
+    const docRef = await db.collection(COLLECTION_NAME).add(cleanData);
     
     // RECORD TRANSACTION
     if (reservation.amountPaid && reservation.amountPaid > 0) {
@@ -52,13 +51,11 @@ export const createReservation = async (reservation: Reservation): Promise<strin
 
 export const getReservationsByRestaurant = async (restaurantId: string): Promise<Reservation[]> => {
   try {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where("restaurantId", "==", restaurantId),
-      orderBy("date", "desc"),
-      orderBy("startTime", "asc")
-    );
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection(COLLECTION_NAME)
+      .where("restaurantId", "==", restaurantId)
+      .orderBy("date", "desc")
+      .orderBy("startTime", "asc")
+      .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Reservation));
   } catch (error) {
     console.error("Error fetching restaurant reservations:", error);
@@ -68,12 +65,10 @@ export const getReservationsByRestaurant = async (restaurantId: string): Promise
 
 export const getReservationsByUser = async (userId: string): Promise<Reservation[]> => {
   try {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where("userId", "==", userId),
-      orderBy("date", "desc")
-    );
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection(COLLECTION_NAME)
+      .where("userId", "==", userId)
+      .orderBy("date", "desc")
+      .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Reservation));
   } catch (error) {
     console.error("Error fetching user reservations:", error);
@@ -87,12 +82,12 @@ export const updateReservationStatus = async (
     refundConfig?: number
 ): Promise<boolean> => {
   try {
-    const ref = doc(db, COLLECTION_NAME, reservationId);
+    const ref = db.collection(COLLECTION_NAME).doc(reservationId);
     const updateData: any = { status };
 
     if ((status === 'cancelled' || status === 'declined')) {
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
+        const snap = await ref.get();
+        if (snap.exists) {
             const res = snap.data() as Reservation;
             if (res.amountPaid && res.amountPaid > 0) {
                 const refundPercent = refundConfig !== undefined ? refundConfig : 0;
@@ -124,7 +119,7 @@ export const updateReservationStatus = async (
     }
 
     // Ensure update data is clean
-    await updateDoc(ref, deepClean(updateData));
+    await ref.update(deepClean(updateData));
     return true;
   } catch (error) {
     console.error("Error updating reservation status:", error);
@@ -134,13 +129,13 @@ export const updateReservationStatus = async (
 
 export const completeReservation = async (reservationId: string, restaurantId: string, tableId: string, extraData: any = {}): Promise<boolean> => {
   try {
-    const batch = writeBatch(db);
+    const batch = db.batch();
     
-    const resRef = doc(db, COLLECTION_NAME, reservationId);
-    const resSnap = await getDoc(resRef);
+    const resRef = db.collection(COLLECTION_NAME).doc(reservationId);
+    const resSnap = await resRef.get();
     let revenueSplit = undefined;
 
-    if (resSnap.exists()) {
+    if (resSnap.exists) {
         const resData = resSnap.data() as Reservation;
         if (resData.amountPaid && resData.amountPaid > 0) {
             revenueSplit = calculateReservationRevenue(resData.amountPaid, 'completed');
@@ -156,7 +151,7 @@ export const completeReservation = async (reservationId: string, restaurantId: s
       ...cleanExtraData 
     });
 
-    const tableRef = doc(db, "users", restaurantId, "tables", tableId);
+    const tableRef = db.collection("users").doc(restaurantId).collection("tables").doc(tableId);
     batch.update(tableRef, { status: 'available' });
 
     await batch.commit();
@@ -171,8 +166,8 @@ export const completeReservation = async (reservationId: string, restaurantId: s
 
 export const requestCounterPayment = async (reservationId: string, amount: number): Promise<boolean> => {
     try {
-        const ref = doc(db, COLLECTION_NAME, reservationId);
-        await updateDoc(ref, { 
+        const ref = db.collection(COLLECTION_NAME).doc(reservationId);
+        await ref.update({ 
             paymentMethod: 'counter',
             paymentStatus: 'pending_counter',
             totalBillAmount: amount
@@ -197,14 +192,12 @@ export const getOccupiedTableIds = async (
   endTime: string
 ): Promise<string[]> => {
   try {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where("restaurantId", "==", restaurantId),
-      where("date", "==", date),
-      where("status", "in", ["pending", "confirmed", "active"]) 
-    );
+    const snapshot = await db.collection(COLLECTION_NAME)
+      .where("restaurantId", "==", restaurantId)
+      .where("date", "==", date)
+      .where("status", "in", ["pending", "confirmed", "active"])
+      .get();
     
-    const snapshot = await getDocs(q);
     const occupiedIds: string[] = [];
 
     const reqStart = getDateFromTime(date, startTime);

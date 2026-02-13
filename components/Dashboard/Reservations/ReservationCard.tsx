@@ -32,7 +32,6 @@ export const ReservationCard: React.FC<ReservationCardProps> = ({ reservation, o
              <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
                 <span className="flex items-center gap-1.5"><Clock size={14}/> {reservation.startTime} - {reservation.endTime}</span>
                 <span className="flex items-center gap-1.5"><AlertCircle size={14}/> {reservation.tableName}</span>
-                <span>{reservation.guestCount} Guests</span>
                 {reservation.amountPaid && reservation.amountPaid > 0 ? (
                    <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded-md font-bold text-xs border border-green-100">Paid ${reservation.amountPaid}</span>
                 ) : null}

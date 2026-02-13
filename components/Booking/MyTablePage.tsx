@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, ArrowLeft, CheckCircle, Receipt, Utensils, AlertTriangle } from 'lucide-react';
-import { getRestaurantById } from '../../services/restaurantService';
+import { getRestaurantById as getRestaurantByIdService } from '../../services/restaurantService'; // Correct import based on previous context
 import { getTables } from '../../services/tableService';
 import { getMenu, getCategories } from '../../services/menuService';
 import { getOffers, trackOfferUsage } from '../../services/offerService'; 
@@ -10,7 +10,6 @@ import { createReservation, requestCounterPayment, completeReservation } from '.
 import { createOrder, getOrdersByReservation, updateOrderItemStatus, updateOrder, markOrderAsPaid } from '../../services/orderService';
 import { addReview, getUserReview, updateReview } from '../../services/reviewService';
 import { UserProfile, RestaurantData, TableItem, Reservation, MenuItem, FoodCategory, OrderItem, Order, OrderStatus, Offer, FoodAddOn, BillingConfig, Review } from '../../types';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { calculateBill, DEFAULT_BILLING_CONFIG } from '../../utils/billing';
 import { useToast } from '../../context/ToastContext';
@@ -96,7 +95,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
       if (!restaurantId || !tableId) return;
       setIsLoading(true);
       try {
-        const rData = await getRestaurantById(restaurantId);
+        const rData = await getRestaurantByIdService(restaurantId);
         
         // Subscription Check: Free Plan (or no plan) blocks QR Scanning
         if (!rData?.subscriptionPlan || rData.subscriptionPlan === 'free') {
@@ -148,51 +147,46 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   useEffect(() => {
     if (!currentUser || !tableId || !restaurantId || planInvalid) return;
     
-    const q = query(
-        collection(db, "reservations"),
-        where("restaurantId", "==", restaurantId),
-        where("tableId", "==", tableId),
-        where("status", "in", ["pending", "active", "completed"])
-    );
+    const unsubscribe = db.collection("reservations")
+        .where("restaurantId", "==", restaurantId)
+        .where("tableId", "==", tableId)
+        .where("status", "in", ["pending", "active", "completed"])
+        .onSnapshot((snapshot) => {
+            let myRes: Reservation | null = null;
+            let otherRes: Reservation | null = null;
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        let myRes: Reservation | null = null;
-        let otherRes: Reservation | null = null;
+            // Sort by date/time to get latest if multiple exist
+            const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Reservation))
+                                      .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-        // Sort by date/time to get latest if multiple exist
-        const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Reservation))
-                                  .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-        if (docs.length > 0) {
-            const latest = docs[0];
-            if (latest.userId === currentUser.uid) {
-                myRes = latest;
-            } else if (latest.status !== 'completed') {
-                otherRes = latest;
-            }
-        }
-
-        if (myRes) {
-            setCurrentReservation(myRes);
-            setIsOccupiedByOthers(false);
-            
-            // Check for Payment Acceptance (Counter Payment)
-            if (myRes.paymentStatus === 'paid' && !hasReviewOpenedRef.current) {
-                hasReviewOpenedRef.current = true;
-                // Only open review modal if user hasn't reviewed yet, otherwise they can edit via SummaryView
-                if (!userReview) {
-                    setIsReviewModalOpen(true);
+            if (docs.length > 0) {
+                const latest = docs[0];
+                if (latest.userId === currentUser.uid) {
+                    myRes = latest;
+                } else if (latest.status !== 'completed') {
+                    otherRes = latest;
                 }
             }
-        } else if (otherRes) {
-            setCurrentReservation(null);
-            setIsOccupiedByOthers(true);
-        } else {
-            setCurrentReservation(null);
-            setIsOccupiedByOthers(false);
-            hasReviewOpenedRef.current = false; // Reset for new session
-        }
-    });
+
+            if (myRes) {
+                setCurrentReservation(myRes);
+                setIsOccupiedByOthers(false);
+                
+                // Check for Payment Acceptance (Counter Payment)
+                if (myRes.paymentStatus === 'paid' && !hasReviewOpenedRef.current) {
+                    hasReviewOpenedRef.current = true;
+                    // REMOVED AUTO POPUP AS REQUESTED
+                    // if (!userReview) setIsReviewModalOpen(true);
+                }
+            } else if (otherRes) {
+                setCurrentReservation(null);
+                setIsOccupiedByOthers(true);
+            } else {
+                setCurrentReservation(null);
+                setIsOccupiedByOthers(false);
+                hasReviewOpenedRef.current = false; // Reset for new session
+            }
+        });
     return () => unsubscribe();
   }, [currentUser, tableId, restaurantId, userReview, planInvalid]); 
 
@@ -290,7 +284,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
             date: now.toISOString().split('T')[0],
             startTime: now.toTimeString().slice(0, 5),
             endTime: new Date(now.getTime() + 2*60*60*1000).toTimeString().slice(0, 5),
-            guestCount: table.seats,
             status: 'pending', 
             type: 'walk_in',
             createdAt: new Date().toISOString()
@@ -485,10 +478,8 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
               }
           }
 
-          if (!userReview) {
-              hasReviewOpenedRef.current = true;
-              setIsReviewModalOpen(true);
-          }
+          // REMOVED AUTOMATIC REVIEW POPUP HERE
+          // User can now review manually via the restaurant details section
 
       } catch (e) { 
           console.error(e); 

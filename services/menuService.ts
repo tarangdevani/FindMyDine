@@ -1,18 +1,17 @@
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
+
 import { db } from "../lib/firebase";
 import { MenuItem, FoodCategory, FoodAddOn } from "../types";
 
 // Helper to reference subcollections under a specific user (restaurant)
 const getUserSubcollection = (uid: string, subcollection: string) => {
-  return collection(db, "users", uid, subcollection);
+  return db.collection("users").doc(uid).collection(subcollection);
 };
 
 // --- Categories ---
 
 export const getCategories = async (uid: string): Promise<FoodCategory[]> => {
   try {
-    const q = query(getUserSubcollection(uid, "categories"), orderBy("name"));
-    const snapshot = await getDocs(q);
+    const snapshot = await getUserSubcollection(uid, "categories").orderBy("name").get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FoodCategory));
   } catch (error) {
     console.error("Error fetching categories:", error);
@@ -22,7 +21,7 @@ export const getCategories = async (uid: string): Promise<FoodCategory[]> => {
 
 export const addCategory = async (uid: string, name: string): Promise<FoodCategory | null> => {
   try {
-    const docRef = await addDoc(getUserSubcollection(uid, "categories"), { name });
+    const docRef = await getUserSubcollection(uid, "categories").add({ name });
     return { id: docRef.id, name };
   } catch (error) {
     console.error("Error adding category:", error);
@@ -32,7 +31,7 @@ export const addCategory = async (uid: string, name: string): Promise<FoodCatego
 
 export const deleteCategory = async (uid: string, categoryId: string): Promise<boolean> => {
   try {
-    await deleteDoc(doc(db, "users", uid, "categories", categoryId));
+    await getUserSubcollection(uid, "categories").doc(categoryId).delete();
     return true;
   } catch (error) {
     console.error("Error deleting category:", error);
@@ -44,8 +43,7 @@ export const deleteCategory = async (uid: string, categoryId: string): Promise<b
 
 export const getGlobalAddOns = async (uid: string): Promise<FoodAddOn[]> => {
   try {
-    const q = query(getUserSubcollection(uid, "addons"), orderBy("name"));
-    const snapshot = await getDocs(q);
+    const snapshot = await getUserSubcollection(uid, "addons").orderBy("name").get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FoodAddOn));
   } catch (error) {
     console.error("Error fetching add-ons:", error);
@@ -55,7 +53,7 @@ export const getGlobalAddOns = async (uid: string): Promise<FoodAddOn[]> => {
 
 export const addGlobalAddOn = async (uid: string, name: string, price: number): Promise<FoodAddOn | null> => {
   try {
-    const docRef = await addDoc(getUserSubcollection(uid, "addons"), { name, price });
+    const docRef = await getUserSubcollection(uid, "addons").add({ name, price });
     return { id: docRef.id, name, price };
   } catch (error) {
     console.error("Error adding add-on:", error);
@@ -65,7 +63,7 @@ export const addGlobalAddOn = async (uid: string, name: string, price: number): 
 
 export const deleteGlobalAddOn = async (uid: string, addOnId: string): Promise<boolean> => {
   try {
-    await deleteDoc(doc(db, "users", uid, "addons", addOnId));
+    await getUserSubcollection(uid, "addons").doc(addOnId).delete();
     return true;
   } catch (error) {
     console.error("Error deleting add-on:", error);
@@ -77,7 +75,7 @@ export const deleteGlobalAddOn = async (uid: string, addOnId: string): Promise<b
 
 export const getMenu = async (uid: string): Promise<MenuItem[]> => {
   try {
-    const snapshot = await getDocs(getUserSubcollection(uid, "menu"));
+    const snapshot = await getUserSubcollection(uid, "menu").get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MenuItem));
   } catch (error) {
     console.error("Error fetching menu:", error);
@@ -88,7 +86,7 @@ export const getMenu = async (uid: string): Promise<MenuItem[]> => {
 export const addMenuItem = async (uid: string, item: MenuItem): Promise<MenuItem | null> => {
   try {
     const { id, ...data } = item; // Exclude ID if present
-    const docRef = await addDoc(getUserSubcollection(uid, "menu"), {
+    const docRef = await getUserSubcollection(uid, "menu").add({
       ...data,
       createdAt: new Date().toISOString()
     });
@@ -103,7 +101,7 @@ export const updateMenuItem = async (uid: string, item: MenuItem): Promise<boole
   if (!item.id) return false;
   try {
     const { id, ...data } = item;
-    await updateDoc(doc(db, "users", uid, "menu", id), data);
+    await getUserSubcollection(uid, "menu").doc(id).update(data);
     return true;
   } catch (error) {
     console.error("Error updating menu item:", error);
@@ -113,7 +111,7 @@ export const updateMenuItem = async (uid: string, item: MenuItem): Promise<boole
 
 export const deleteMenuItem = async (uid: string, itemId: string): Promise<boolean> => {
   try {
-    await deleteDoc(doc(db, "users", uid, "menu", itemId));
+    await getUserSubcollection(uid, "menu").doc(itemId).delete();
     return true;
   } catch (error) {
     console.error("Error deleting menu item:", error);
