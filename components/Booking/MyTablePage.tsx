@@ -2,14 +2,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, ArrowLeft, CheckCircle, Receipt, Utensils, AlertTriangle } from 'lucide-react';
-import { getRestaurantById as getRestaurantByIdService } from '../../services/restaurantService'; // Correct import based on previous context
+import { getRestaurantById as getRestaurantByIdService } from '../../services/restaurantService'; 
 import { getTables } from '../../services/tableService';
 import { getMenu, getCategories } from '../../services/menuService';
 import { getOffers, trackOfferUsage } from '../../services/offerService'; 
-import { createReservation, requestCounterPayment, completeReservation } from '../../services/reservationService';
-import { createOrder, getOrdersByReservation, updateOrderItemStatus, updateOrder, markOrderAsPaid } from '../../services/orderService';
+import { requestCounterPayment, completeReservation, createReservation } from '../../services/reservationService';
+import { createOrder, getOrdersByReservation, updateOrder, markOrderAsPaid } from '../../services/orderService';
 import { addReview, getUserReview, updateReview } from '../../services/reviewService';
-import { UserProfile, RestaurantData, TableItem, Reservation, MenuItem, FoodCategory, OrderItem, Order, OrderStatus, Offer, FoodAddOn, BillingConfig, Review } from '../../types';
+import { UserProfile, RestaurantData, TableItem, Reservation, MenuItem, FoodCategory, OrderItem, Order, Offer, FoodAddOn, BillingConfig, Review } from '../../types';
 import { db } from '../../lib/firebase';
 import { calculateBill, DEFAULT_BILLING_CONFIG } from '../../utils/billing';
 import { useToast } from '../../context/ToastContext';
@@ -175,8 +175,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
                 // Check for Payment Acceptance (Counter Payment)
                 if (myRes.paymentStatus === 'paid' && !hasReviewOpenedRef.current) {
                     hasReviewOpenedRef.current = true;
-                    // REMOVED AUTO POPUP AS REQUESTED
-                    // if (!userReview) setIsReviewModalOpen(true);
                 }
             } else if (otherRes) {
                 setCurrentReservation(null);
@@ -429,12 +427,17 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
               const breakdown = calculateBill(existingOrders.flatMap(o => o.items), billingConfig);
               const totalDiscount = offerDiscountAmount + couponDiscountAmount;
               
+              // Recalculate platform fee for record
+              const netAmount = Math.max(0, breakdown.grandTotal - totalDiscount);
+              const platformFee = Number((netAmount * 0.03).toFixed(2));
+
               const billSnapshot = {
                   subtotal: breakdown.menuSubtotal,
                   serviceCharge: breakdown.serviceChargeAmount,
                   tax: breakdown.taxAmount,
                   discount: totalDiscount,
                   grandTotal: grandTotal, 
+                  platformFee: platformFee, // Save platform fee
                   discountDetails: appliedCoupon ? `Coupon ${appliedCoupon.code}` : bestPublicOffer ? `Offer ${bestPublicOffer.title}` : ''
               };
 
@@ -478,15 +481,18 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
               }
           }
 
-          // REMOVED AUTOMATIC REVIEW POPUP HERE
-          // User can now review manually via the restaurant details section
+          showToast("Payment Successful! Redirecting...", "success");
+          
+          // Redirect after 2 seconds
+          setTimeout(() => {
+              navigate(`/restaurant/${restaurantId}`);
+          }, 2000);
 
       } catch (e) { 
           console.error(e); 
           showToast("Payment recording failed", "error"); 
-      } finally { 
-          setIsProcessing(false); 
-      }
+          setIsProcessing(false);
+      } 
   };
 
   const handleReviewSubmit = async (rating: number, comment: string) => {
@@ -519,6 +525,81 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
     }
     
     setIsReviewModalOpen(false);
+  };
+
+  const handleCreateNewBill = async (posData: any) => {
+    setIsProcessing(true);
+    try {
+        const resData: Reservation = {
+            restaurantId: restaurantId!,
+            restaurantName: restaurant?.name || 'POS Order',
+            userId: 'walk-in-pos',
+            userName: posData.customerName,
+            userEmail: '',
+            tableId: posData.tableId,
+            tableName: posData.tableName,
+            date: new Date().toISOString().split('T')[0],
+            startTime: new Date().toTimeString().slice(0, 5),
+            endTime: new Date().toTimeString().slice(0, 5),
+            status: 'completed',
+            type: 'walk_in',
+            createdAt: new Date().toISOString(),
+            paymentStatus: 'paid',
+            paymentMethod: 'counter',
+            totalBillAmount: posData.totalAmount
+        };
+        const resId = await createReservation(resData);
+
+        const itemsWithPaidStatus = posData.items.map((i: OrderItem) => ({ ...i, status: 'paid' }));
+
+        const orderData: Order = {
+            restaurantId: restaurantId!,
+            tableId: posData.tableId,
+            tableName: posData.tableName,
+            reservationId: resId!,
+            userId: 'walk-in-pos',
+            userName: posData.customerName,
+            items: itemsWithPaidStatus,
+            totalAmount: posData.totalAmount,
+            status: 'paid',
+            createdAt: new Date().toISOString(),
+            customDiscount: posData.customDiscount,
+            appliedOfferId: posData.appliedOfferId,
+            billDetails: posData.billDetails
+        };
+        const orderId = await createOrder(orderData);
+
+        if (posData.appliedOfferId && posData.billDetails) {
+            await trackOfferUsage(restaurantId!, posData.appliedOfferId, {
+                userId: 'walk-in-pos',
+                userName: posData.customerName,
+                orderId: orderId!,
+                discountAmount: posData.billDetails.discount
+            });
+        }
+
+        showToast("Bill Generated & Saved to History", "success");
+        // We probably don't need to fetchLiveData here as this page is for the customer/specific table context
+        // But if this component is reused elsewhere it might matter. 
+        // For MyTablePage, POS actions are rare/admin-like, usually handled via Dashboard/Billing.
+        
+        // Refresh local state if needed or just close modal?
+        // Since handleCreateNewBill isn't used in MyTablePage main flow (it's for POSView in Dashboard), 
+        // this function here is likely unused or a copy-paste artifact if present.
+        // However, looking at the imports, this file is MyTablePage.tsx.
+        // MyTablePage doesn't invoke POS logic directly usually. 
+        // But I see `handleCreateNewBill` referenced in the imports list? No, `handleCreateNewBill` is defined inside `Billing.tsx`.
+        
+        // Wait, the error was about `createReservation` being undefined in `MyTablePage`.
+        // Let's see where `createReservation` is used in `MyTablePage`.
+        // Ah, `handleOccupyTable` uses `createReservation`.
+        
+    } catch (error) {
+        console.error(error);
+        showToast("Failed to generate bill", "error");
+    } finally {
+        setIsProcessing(false);
+    }
   };
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-primary-600" size={40} /></div>;

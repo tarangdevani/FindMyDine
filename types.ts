@@ -142,6 +142,7 @@ export interface BillSnapshot {
   serviceCharge: number;
   tax: number;
   discount: number;
+  platformFee?: number; // Added
   grandTotal: number;
   discountDetails?: string; // e.g. "Coupon SAVE20"
 }

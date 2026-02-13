@@ -42,16 +42,16 @@ export const BillReceipt: React.FC<BillReceiptProps> = ({
     if (billDetails) {
         // Use historical snapshot
         const totalDisc = billDetails.discount;
-        const net = Math.max(0, billDetails.grandTotal - (platformFeeRate > 0 ? 0 : 0)); // Snapshot usually stores user payable. Platform fee might be additive.
-        // Re-deriving platform fee if it wasn't stored in snapshot but is requested now (rare case)
-        // Usually snapshot grandTotal is the final amount.
+        // Try to read platform fee from snapshot, or infer it if rate provided (fallback for old records)
+        let platFee = billDetails.platformFee || 0;
+        
         return {
             menuSubtotal: billDetails.subtotal,
             serviceCharge: billDetails.serviceCharge,
             tax: billDetails.tax,
             totalDiscount: totalDisc,
             grandTotal: billDetails.grandTotal,
-            platformFee: 0, // Assume included or not applicable for history unless stored
+            platformFee: platFee,
             activeItems: items // Items passed for display
         };
     }

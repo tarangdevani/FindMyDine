@@ -145,8 +145,12 @@ export const BillingList: React.FC<BillingListProps> = ({
             ) : (
                 displayedOrders.map(order => {
                     const res = reservations.find(r => r.id === order.reservationId);
-                    // For history, we use order.totalAmount directly as usually the reservation link might not be in the active fetched batch
-                    const totalAmount = order.totalAmount || res?.totalBillAmount || 0;
+                    
+                    // Prioritize final bill amount (snapshot), otherwise fall back to raw total
+                    const displayAmount = order.billDetails?.grandTotal 
+                        || order.totalAmount 
+                        || res?.totalBillAmount 
+                        || 0;
                     
                     return (
                         <div 
@@ -184,7 +188,7 @@ export const BillingList: React.FC<BillingListProps> = ({
 
                             <div className="text-right shrink-0">
                                 <span className="block font-black text-gray-900 text-lg tracking-tight">
-                                    ${totalAmount.toFixed(2)}
+                                    ${displayAmount.toFixed(2)}
                                 </span>
                                 <div className="flex items-center justify-end gap-1 text-[10px] font-bold uppercase text-gray-400 mt-0.5">
                                     <Utensils size={10} />
