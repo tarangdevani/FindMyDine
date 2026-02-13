@@ -63,6 +63,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   const [activeView, setActiveView] = useState<ViewMode>('summary');
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isPaymentSuccess, setIsPaymentSuccess] = useState(false); // New state for payment success transition
   const [activeCategory, setActiveCategory] = useState<string>('All');
   
   // Local Staging Cart
@@ -147,10 +148,11 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
   useEffect(() => {
     if (!currentUser || !tableId || !restaurantId || planInvalid) return;
     
+    // Only listen for Pending or Active. Completed means session is over and table is free for new session.
     const unsubscribe = db.collection("reservations")
         .where("restaurantId", "==", restaurantId)
         .where("tableId", "==", tableId)
-        .where("status", "in", ["pending", "active", "completed"])
+        .where("status", "in", ["pending", "active"]) 
         .onSnapshot((snapshot) => {
             let myRes: Reservation | null = null;
             let otherRes: Reservation | null = null;
@@ -481,6 +483,7 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
               }
           }
 
+          setIsPaymentSuccess(true); // Trigger success UI
           showToast("Payment Successful! Redirecting...", "success");
           
           // Redirect after 2 seconds
@@ -527,81 +530,6 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
     setIsReviewModalOpen(false);
   };
 
-  const handleCreateNewBill = async (posData: any) => {
-    setIsProcessing(true);
-    try {
-        const resData: Reservation = {
-            restaurantId: restaurantId!,
-            restaurantName: restaurant?.name || 'POS Order',
-            userId: 'walk-in-pos',
-            userName: posData.customerName,
-            userEmail: '',
-            tableId: posData.tableId,
-            tableName: posData.tableName,
-            date: new Date().toISOString().split('T')[0],
-            startTime: new Date().toTimeString().slice(0, 5),
-            endTime: new Date().toTimeString().slice(0, 5),
-            status: 'completed',
-            type: 'walk_in',
-            createdAt: new Date().toISOString(),
-            paymentStatus: 'paid',
-            paymentMethod: 'counter',
-            totalBillAmount: posData.totalAmount
-        };
-        const resId = await createReservation(resData);
-
-        const itemsWithPaidStatus = posData.items.map((i: OrderItem) => ({ ...i, status: 'paid' }));
-
-        const orderData: Order = {
-            restaurantId: restaurantId!,
-            tableId: posData.tableId,
-            tableName: posData.tableName,
-            reservationId: resId!,
-            userId: 'walk-in-pos',
-            userName: posData.customerName,
-            items: itemsWithPaidStatus,
-            totalAmount: posData.totalAmount,
-            status: 'paid',
-            createdAt: new Date().toISOString(),
-            customDiscount: posData.customDiscount,
-            appliedOfferId: posData.appliedOfferId,
-            billDetails: posData.billDetails
-        };
-        const orderId = await createOrder(orderData);
-
-        if (posData.appliedOfferId && posData.billDetails) {
-            await trackOfferUsage(restaurantId!, posData.appliedOfferId, {
-                userId: 'walk-in-pos',
-                userName: posData.customerName,
-                orderId: orderId!,
-                discountAmount: posData.billDetails.discount
-            });
-        }
-
-        showToast("Bill Generated & Saved to History", "success");
-        // We probably don't need to fetchLiveData here as this page is for the customer/specific table context
-        // But if this component is reused elsewhere it might matter. 
-        // For MyTablePage, POS actions are rare/admin-like, usually handled via Dashboard/Billing.
-        
-        // Refresh local state if needed or just close modal?
-        // Since handleCreateNewBill isn't used in MyTablePage main flow (it's for POSView in Dashboard), 
-        // this function here is likely unused or a copy-paste artifact if present.
-        // However, looking at the imports, this file is MyTablePage.tsx.
-        // MyTablePage doesn't invoke POS logic directly usually. 
-        // But I see `handleCreateNewBill` referenced in the imports list? No, `handleCreateNewBill` is defined inside `Billing.tsx`.
-        
-        // Wait, the error was about `createReservation` being undefined in `MyTablePage`.
-        // Let's see where `createReservation` is used in `MyTablePage`.
-        // Ah, `handleOccupyTable` uses `createReservation`.
-        
-    } catch (error) {
-        console.error(error);
-        showToast("Failed to generate bill", "error");
-    } finally {
-        setIsProcessing(false);
-    }
-  };
-
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-primary-600" size={40} /></div>;
   
   // --- RESTRICTION SCREEN ---
@@ -638,13 +566,29 @@ export const MyTablePage: React.FC<MyTablePageProps> = ({ currentUser, onLoginRe
       );
   }
 
+  // Handle Payment Success Transition
+  if (isPaymentSuccess) {
+      return (
+          <div className="min-h-screen bg-green-50 flex items-center justify-center p-6 animate-fade-in">
+              <div className="text-center">
+                  <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl text-green-500">
+                      <CheckCircle size={48} className="animate-bounce" />
+                  </div>
+                  <h2 className="text-3xl font-black text-green-800 mb-2">Payment Successful!</h2>
+                  <p className="text-green-700 font-medium">Thank you for dining with us.</p>
+                  <p className="text-green-600 text-sm mt-4 animate-pulse">Redirecting to restaurant page...</p>
+              </div>
+          </div>
+      );
+  }
+
   // View: Pending
   if (currentReservation && currentReservation.status === 'pending') {
       return <WaitingView table={table} />;
   }
 
-  // View: Active OR Completed
-  if (currentReservation && (currentReservation.status === 'active' || currentReservation.status === 'completed')) {
+  // View: Active
+  if (currentReservation && currentReservation.status === 'active') {
       const displayItems = existingOrders.flatMap(order => 
           order.items.map((item, index) => ({ 
             ...item, 

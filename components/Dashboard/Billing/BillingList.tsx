@@ -39,12 +39,15 @@ export const BillingList: React.FC<BillingListProps> = ({
   // Debounce Search
   useEffect(() => {
     const timer = setTimeout(() => {
+        // Only trigger search if active tab is history to avoid double calling on tab switch
+        // The parent handles initial load on tab switch
+        // This ensures subsequent searches update the list
         if (activeTab === 'history') {
             onHistorySearch(searchTerm);
         }
     }, 500);
     return () => clearTimeout(timer);
-  }, [searchTerm, activeTab]);
+  }, [searchTerm]); // Removed activeTab dependency to prevent double fetch on switch
 
   // Date Change
   useEffect(() => {
@@ -146,11 +149,19 @@ export const BillingList: React.FC<BillingListProps> = ({
                 displayedOrders.map(order => {
                     const res = reservations.find(r => r.id === order.reservationId);
                     
-                    // Prioritize final bill amount (snapshot), otherwise fall back to raw total
-                    const displayAmount = order.billDetails?.grandTotal 
-                        || order.totalAmount 
-                        || res?.totalBillAmount 
-                        || 0;
+                    // Prioritization Logic:
+                    // 1. If paid/snapshot exists, use that (Exact final)
+                    // 2. If pending counter payment, use the requested amount from reservation (Grand Total)
+                    // 3. Fallback to order total (Menu Total)
+                    let displayAmount = 0;
+                    
+                    if (order.billDetails?.grandTotal) {
+                        displayAmount = order.billDetails.grandTotal;
+                    } else if (res?.totalBillAmount && res.paymentStatus === 'pending_counter') {
+                        displayAmount = res.totalBillAmount;
+                    } else {
+                        displayAmount = order.totalAmount || 0;
+                    }
                     
                     return (
                         <div 
